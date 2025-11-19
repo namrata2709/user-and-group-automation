@@ -1,0 +1,152 @@
+{
+  "_comment": "Group Management Template",
+  "_description": "Create or delete groups with members",
+  "_usage": "sudo ./user.sh --manage-groups examples/groups.json",
+  
+  "groups": [
+    {
+      "name": "developers",
+      "action": "create",
+      "members": ["alice", "bob", "charlie"]
+    },
+    {
+      "name": "testers",
+      "action": "create",
+      "members": ["david", "eve"]
+    },
+    {
+      "name": "deploy",
+      "action": "create",
+      "members": ["alice", "charlie"]
+    },
+    {
+      "name": "managers",
+      "action": "create",
+      "members": ["frank", "grace"]
+    },
+    {
+      "name": "contractors",
+      "action": "create",
+      "members": ["temp1", "temp2"]
+    },
+    {
+      "name": "viewers",
+      "action": "create",
+      "members": ["frank", "grace", "readonly_user"]
+    },
+    {
+      "name": "services",
+      "action": "create",
+      "members": []
+    },
+    {
+      "name": "old_group",
+      "action": "delete"
+    }
+  ],
+  
+  "_field_definitions": {
+    "name": "Required. Group name (a-z, 0-9, _, -, max 32 chars)",
+    "action": "Required. Either 'create' or 'delete'",
+    "members": "Optional for create, ignored for delete. Array of usernames to add to group"
+  },
+  
+  "_examples": {
+    "create_empty_group": {
+      "name": "new_team",
+      "action": "create",
+      "members": []
+    },
+    "create_group_with_members": {
+      "name": "backend_team",
+      "action": "create",
+      "members": ["john", "jane", "joe"]
+    },
+    "delete_group": {
+      "name": "obsolete_team",
+      "action": "delete"
+    }
+  },
+  
+  "_common_group_structure": {
+    "by_department": [
+      "engineering",
+      "qa",
+      "operations",
+      "management",
+      "sales",
+      "support"
+    ],
+    "by_role": [
+      "developers",
+      "senior_developers",
+      "devops",
+      "testers",
+      "managers",
+      "contractors",
+      "interns"
+    ],
+    "by_access_level": [
+      "admins",
+      "power_users",
+      "regular_users",
+      "viewers",
+      "guests"
+    ],
+    "by_technology": [
+      "docker",
+      "git",
+      "database",
+      "frontend",
+      "backend",
+      "deploy"
+    ],
+    "special_purpose": [
+      "sudo",
+      "wheel",
+      "services",
+      "backup_operators"
+    ]
+  },
+  
+  "_workflow": [
+    "1. Create groups first (before adding users)",
+    "2. Add users to groups (users must already exist)",
+    "3. Delete old/unused groups last",
+    "4. Run: sudo ./user.sh --manage-groups groups.json",
+    "5. Verify: sudo ./user.sh --view groups"
+  ],
+  
+  "_tips": [
+    "Create groups before creating users that need them",
+    "Empty members array creates group without any members",
+    "Cannot delete groups that are primary group for any user",
+    "Cannot delete system groups (GID < 1000)",
+    "Users in 'members' must already exist",
+    "Test with --dry-run first (coming in future version)",
+    "View all groups: sudo ./user.sh --view groups",
+    "View group details: sudo ./user.sh --view group --name developers"
+  ],
+  
+  "_typical_setup_order": [
+    "1. Create basic groups (developers, testers, viewers)",
+    "2. Create users and assign to groups",
+    "3. Create specialized groups as needed",
+    "4. Clean up old groups periodically"
+  ],
+  
+  "_group_naming_conventions": {
+    "lowercase": "Always use lowercase for consistency",
+    "descriptive": "Use clear, descriptive names (backend_devs not bd)",
+    "no_spaces": "Use underscores instead of spaces (qa_team not qa team)",
+    "prefix_by_type": "Consider prefixes: dept_engineering, role_admin, access_readonly"
+  },
+  
+  "_security_considerations": [
+    "sudo/wheel groups grant full system access - be careful",
+    "Regularly audit group memberships",
+    "Remove users from groups when they change roles",
+    "Delete unused groups to reduce security surface",
+    "Document group purposes in external documentation"
+  ]
+}

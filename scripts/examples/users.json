@@ -1,0 +1,119 @@
+{
+  "_comment": "Bulk User Creation Template",
+  "_description": "Use this template to create multiple users at once",
+  "_usage": "sudo ./user.sh --add user --input examples/users.json --format json",
+  
+  "users": [
+    {
+      "username": "alice",
+      "comment": "Alice Johnson - Developer",
+      "groups": ["developers", "git", "docker"],
+      "shell": "/bin/bash",
+      "expire_days": 365,
+      "password_policy": {
+        "type": "random",
+        "expiry_days": 90
+      }
+    },
+    {
+      "username": "bob",
+      "comment": "Bob Smith - QA Tester",
+      "groups": ["testers", "qa"],
+      "shell": "/bin/bash",
+      "expire_days": 0,
+      "password_policy": {
+        "type": "default",
+        "expiry_days": 60
+      }
+    },
+    {
+      "username": "charlie",
+      "comment": "Charlie Brown - DevOps",
+      "groups": ["developers", "deploy", "sudo"],
+      "shell": "/bin/bash",
+      "expire_days": 0,
+      "password_policy": {
+        "type": "random",
+        "expiry_days": 30
+      }
+    },
+    {
+      "username": "diana",
+      "comment": "Diana Prince - Project Manager",
+      "groups": ["managers", "viewers"],
+      "shell": "/bin/bash",
+      "expire_days": 180,
+      "password_policy": {
+        "type": "random",
+        "expiry_days": 90
+      }
+    },
+    {
+      "username": "service_app1",
+      "comment": "Application Service Account",
+      "groups": ["services"],
+      "shell": "/sbin/nologin",
+      "expire_days": 0,
+      "password_policy": {
+        "type": "random",
+        "expiry_days": 99999
+      }
+    }
+  ],
+  
+  "_field_definitions": {
+    "username": "Required. Linux username (a-z, 0-9, _, -, max 32 chars)",
+    "comment": "Optional. Full name or description (GECOS field)",
+    "groups": "Optional. Array of group names (groups must exist or be created first)",
+    "shell": "Optional. Login shell path (default: /bin/bash, nologin: /sbin/nologin)",
+    "expire_days": "Optional. Account expires after N days (0 = never)",
+    "password_policy": {
+      "type": "random = unique random password, default = use config DEFAULT_PASSWORD",
+      "expiry_days": "Password must be changed every N days (90 is common, 99999 = never)"
+    }
+  },
+  
+  "_examples": {
+    "basic_user": {
+      "username": "john",
+      "comment": "John Doe"
+    },
+    "developer_with_sudo": {
+      "username": "jane",
+      "comment": "Jane Developer",
+      "groups": ["developers", "sudo"],
+      "password_policy": {
+        "type": "random",
+        "expiry_days": 90
+      }
+    },
+    "temporary_contractor": {
+      "username": "contractor1",
+      "comment": "3-month contractor",
+      "expire_days": 90,
+      "groups": ["contractors"],
+      "password_policy": {
+        "type": "random",
+        "expiry_days": 30
+      }
+    },
+    "service_account": {
+      "username": "svc_webapp",
+      "comment": "Web Application Service",
+      "shell": "/sbin/nologin",
+      "groups": ["services"],
+      "password_policy": {
+        "type": "random",
+        "expiry_days": 99999
+      }
+    }
+  },
+  
+  "_tips": [
+    "Always use 'random' password type for better security",
+    "Service accounts should use /sbin/nologin shell",
+    "Set expire_days for temporary users (contractors, interns)",
+    "Password expiry 30-90 days is industry standard",
+    "Test with --dry-run flag first: sudo ./user.sh --add user --input users.json --dry-run"
+  ]
+}

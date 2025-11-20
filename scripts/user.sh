@@ -128,7 +128,7 @@ init_script() {
     fi
     
     # Check jq dependency for JSON operations
-    if [ "$JSON_INPUT" = true ] || [ "$OPERATION" = "--apply-roles" ] || [ "$OPERATION" = "--manage-groups" ]; then
+    if [ "$JSON_INPUT" = true ] || [ "$JSON_OUTPUT" = true ] || [ "$OPERATION" = "--apply-roles" ] || [ "$OPERATION" = "--manage-groups" ]; then
         if ! command -v jq &> /dev/null; then
             echo "${ICON_ERROR} jq is required for JSON operations"
             echo "   Install with:"

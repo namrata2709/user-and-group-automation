@@ -179,7 +179,7 @@ add_users() {
                 sudo chmod 700 "$password_dir"
                 
                 local timestamp=$(date '+%Y%m%d_%H%M%S')
-                local password_file="$password_dir/${username}_${timestamp}.txt"
+                local password_file="$password_dir/${username}_${timestamp}_$$.txt"
                 
                 {
                     echo "User Creation - Random Password"

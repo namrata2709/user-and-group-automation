@@ -7,7 +7,7 @@
 # Usage: sudo ./test_phase1.sh [test_name|all]
 # ================================================
 
-set -euo pipefail
+
 
 # Colors
 RED='\033[0;31m'

@@ -7,7 +7,7 @@
 # Modular architecture - loads functions from lib/
 # ================================================
 
-set -euo pipefail
+
 
 # ============ VERSION INFO ==================
 VERSION="1.0.1"

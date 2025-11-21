@@ -1,275 +1,353 @@
-# Phase 1 - Complete Deployment & Demo Guide
-## From Zero to Production in 30 Minutes
+Phase 1 - Complete Deployment & Demo Guide
+EC2 User Management System v1.0.1
+Purpose: Step-by-step guide to deploy, test, and showcase all Phase 1 features on EC2
+Time Required: 60-90 minutes
+ Skill Level: Beginner-friendly (detailed instructions)
 
-This guide walks you through deploying Phase 1 on an EC2 instance and demonstrating all features.
+📋 Table of Contents
+Prerequisites
+EC2 Instance Setup
+Installation
+Configuration
+Testing Suite
+Feature Demonstrations
+Real-World Scenarios
+Troubleshooting
 
----
+1. Prerequisites {#prerequisites}
+What You Need
+AWS Account:
+Active AWS account
+Permissions to launch EC2 instances
+SSH key pair created
+Local Machine:
+SSH client (Terminal on Mac/Linux, PuTTY on Windows)
+Text editor (VS Code, Sublime, or nano)
+All Phase 1 files downloaded
+Files Required (29 total):
+phase1/
+├── user.sh
+├── user_mgmt.conf
+├── install.sh
+├── test_phase1.sh
+├── lib/
+│   ├── logging.sh
+│   ├── validation.sh
+│   ├── config_validation.sh
+│   ├── helpers.sh
+│   ├── json.sh
+│   ├── help.sh
+│   ├── json_input.sh
+│   ├── user_add.sh
+│   ├── user_delete.sh
+│   ├── user_update.sh
+│   ├── user_lock.sh
+│   ├── group_add.sh
+│   ├── group_delete.sh
+│   ├── group_update.sh
+│   ├── view.sh
+│   ├── view_json.sh
+│   ├── search.sh
+│   ├── search_json.sh
+│   ├── report.sh
+│   ├── report_json.sh
+│   └── export.sh
+└── examples/
+    ├── users.json
+    ├── roles.json
+    ├── groups.json
+    ├── deletions.json
+    └── README.md
 
-## 📋 Prerequisites
 
-### AWS Requirements
-- AWS Account
-- EC2 t3.micro instance (Free Tier eligible)
-- Amazon Linux 2 or Ubuntu 22.04
-- SSH key pair for access
+2. EC2 Instance Setup {#ec2-setup}
+Step 1: Launch EC2 Instance
+Navigate to EC2 Console:
+AWS Console → EC2 → Launch Instance
 
-### Local Requirements
-- SSH client
-- Your Phase 1 files (29 files ready)
+Instance Configuration:
+Name: user-mgmt-demo
 
----
 
-## 🚀 Part 1: Launch EC2 Instance (5 minutes)
+AMI:
 
-### Step 1: Launch Instance
 
-**Via AWS Console:**
+Amazon Linux 2023 AMI (recommended)
+OR Ubuntu Server 22.04 LTS
+Instance Type:
 
-1. **Go to EC2 Dashboard**
-   - Navigate to: https://console.aws.amazon.com/ec2/
 
-2. **Launch Instance**
-   - Click "Launch Instance"
-   - Name: `phase1-demo-server`
+t3.micro (Free Tier eligible)
+1 vCPU, 1 GB RAM
+Key Pair:
 
-3. **Choose AMI**
-   - **Option A:** Amazon Linux 2023 (recommended)
-   - **Option B:** Ubuntu Server 22.04 LTS
 
-4. **Instance Type**
-   - Select: `t3.micro` (Free Tier eligible)
+Select existing or create new
+Download .pem file (keep secure!)
+Network Settings:
 
-5. **Key Pair**
-   - Create new or select existing
-   - Download `.pem` file
-   - Save to: `~/.ssh/phase1-demo.pem`
 
-6. **Network Settings**
-   - Create security group:
-     - Name: `phase1-demo-sg`
-     - Allow SSH (port 22) from **Your IP only**
-     - Click "Add rule" → Allow HTTP (port 8080) from **Your IP** (for future web UI)
+Create security group: user-mgmt-sg
+Allow SSH (port 22) from Your IP only
+Description: "User Management Demo"
+Storage:
 
-7. **Configure Storage**
-   - 8 GB gp3 (default is fine)
 
-8. **Launch Instance**
-   - Wait 2-3 minutes for instance to start
-   - Note the **Public IPv4 address**
+8 GB gp3 (default is fine)
+Click: "Launch Instance"
 
-### Step 2: Prepare SSH Key
 
-```bash
-# On your local machine
-chmod 400 ~/.ssh/phase1-demo.pem
+Wait 2-3 minutes for instance to initialize
+Step 2: Configure SSH Access
+For Mac/Linux:
+# Set correct permissions on key file
+chmod 400 ~/Downloads/your-key.pem
 
-# Test connection (replace with your IP)
-ssh -i ~/.ssh/phase1-demo.pem ec2-user@YOUR_EC2_IP
+# Create SSH config entry (optional but convenient)
+nano ~/.ssh/config
 
-# For Ubuntu, use:
-ssh -i ~/.ssh/phase1-demo.pem ubuntu@YOUR_EC2_IP
-```
+# Add this:
+Host usermgmt
+    HostName <EC2-PUBLIC-IP>
+    User ec2-user
+    IdentityFile ~/Downloads/your-key.pem
+    
+# Save: Ctrl+O, Enter, Ctrl+X
 
-**Expected Output:**
-```
-The authenticity of host 'XX.XX.XX.XX' can't be established.
-Are you sure you want to continue connecting (yes/no)? yes
+# Now you can connect with:
+ssh usermgmt
 
-       __|  __|_  )
-       _|  (     /   Amazon Linux 2023
-      ___|\___|___|
+For Windows (PuTTY):
+1. Convert .pem to .ppk using PuTTYgen
+2. Open PuTTY
+3. Host: ec2-user@<EC2-PUBLIC-IP>
+4. Connection → SSH → Auth → Browse for .ppk file
+5. Save session as "usermgmt"
+6. Click "Open"
 
-[ec2-user@ip-XXX ~]$
-```
+Step 3: First Connection
+# Connect to EC2
+ssh usermgmt
+# OR
+ssh -i ~/Downloads/your-key.pem ec2-user@<EC2-PUBLIC-IP>
 
----
+# You should see:
+   ,     #_
+   ~\_  ####_        Amazon Linux 2023
+  ~~  \_#####\
+  ~~     \###|
+  ~~       \#/ ___
+   ~~       V~' '->
+    ~~~         /
+      ~~._.   _/
+         _/ _/
+       _/m/'
 
-## 📦 Part 2: Upload Files to EC2 (5 minutes)
+# Update system
+sudo yum update -y
+# OR for Ubuntu:
+sudo apt update && sudo apt upgrade -y
 
-### Step 1: Prepare Files Locally
+# Install dependencies
+sudo yum install -y jq git tar gzip
+# OR for Ubuntu:
+sudo apt install -y jq git tar gzip
 
-**On your local machine:**
 
-```bash
-# Create deployment package
-cd /path/to/your/phase1/files
+3. Installation {#installation}
+Step 1: Create Project Structure
+# Create main directory
+sudo mkdir -p /opt/admin_dashboard/{scripts/lib,config,scripts/examples}
 
-# Create directory structure
-mkdir -p phase1_deploy/scripts/lib
-mkdir -p phase1_deploy/scripts/examples
-mkdir -p phase1_deploy/config
+# Set ownership
+sudo chown -R $USER:$USER /opt/admin_dashboard
 
-# Copy main script
-cp user.sh phase1_deploy/scripts/
+# Verify structure
+tree /opt/admin_dashboard
 
-# Copy library modules
-cp lib/*.sh phase1_deploy/scripts/lib/
+Step 2: Upload Files to EC2
+Method A: SCP (Recommended)
+From your local machine:
+# Upload main script
+scp -i ~/Downloads/your-key.pem user.sh ec2-user@<EC2-IP>:/tmp/
 
-# Copy configuration
-cp user_mgmt.conf phase1_deploy/config/
+# Upload all lib files
+scp -i ~/Downloads/your-key.pem lib/*.sh ec2-user@<EC2-IP>:/tmp/lib/
 
-# Copy examples
-cp examples/*.json phase1_deploy/scripts/examples/
-cp examples/README.md phase1_deploy/scripts/examples/
+# Upload config
+scp -i ~/Downloads/your-key.pem user_mgmt.conf ec2-user@<EC2-IP>:/tmp/
 
-# Copy test script
-cp test_phase1.sh phase1_deploy/scripts/
+# Upload examples
+scp -i ~/Downloads/your-key.pem examples/*.json examples/README.md ec2-user@<EC2-IP>:/tmp/examples/
 
-# Copy installation script
-cp install.sh phase1_deploy/
+# Upload test suite
+scp -i ~/Downloads/your-key.pem test_phase1.sh ec2-user@<EC2-IP>:/tmp/
 
-# Create tarball
-tar -czf phase1_deploy.tar.gz phase1_deploy/
-```
+Method B: Create Files Directly on EC2
+# SSH into EC2
+ssh usermgmt
 
-### Step 2: Upload to EC2
+# Create main script
+nano /tmp/user.sh
+# Paste content from user.sh
+# Save: Ctrl+O, Enter, Ctrl+X
 
-```bash
-# Upload package (replace with your details)
-scp -i ~/.ssh/phase1-demo.pem \
-    phase1_deploy.tar.gz \
-    ec2-user@YOUR_EC2_IP:~
+# Repeat for each file...
 
-# For Ubuntu:
-scp -i ~/.ssh/phase1-demo.pem \
-    phase1_deploy.tar.gz \
-    ubuntu@YOUR_EC2_IP:~
-```
+Method C: Git Clone (If you have a repo)
+ssh usermgmt
+cd /tmp
+git clone https://github.com/yourusername/ec2-user-mgmt.git
+cd ec2-user-mgmt
 
-**Expected Output:**
-```
-phase1_deploy.tar.gz    100%  245KB  12.3MB/s   00:00
-```
+Step 3: Move Files to Correct Locations
+# On EC2 instance
+ssh usermgmt
 
----
-
-## ⚙️ Part 3: Install on EC2 (5 minutes)
-
-### Step 1: Connect to EC2
-
-```bash
-ssh -i ~/.ssh/phase1-demo.pem ec2-user@YOUR_EC2_IP
-```
-
-### Step 2: Extract and Install
-
-```bash
-# Extract package
-tar -xzf phase1_deploy.tar.gz
-cd phase1_deploy
-
-# Make install script executable
-chmod +x install.sh
-
-# Run installation
-sudo ./install.sh
-```
-
-**Expected Output:**
-```
-==========================================
-EC2 User Management System - Installer v1.0.1
-==========================================
-
-[Checking System Compatibility]
-✓ OS: Amazon Linux 2023
-✓ Installation directory created
-
-[Installing Dependencies]
-✓ jq installed
-
-[Creating Directory Structure]
-✓ Created: /opt/admin_dashboard
-✓ Created: /opt/admin_dashboard/scripts
-✓ Created: /opt/admin_dashboard/scripts/lib
-✓ Created: /opt/admin_dashboard/config
-✓ Created: /opt/admin_dashboard/scripts/examples
-✓ Created log file: /var/log/user_mgmt.log
-✓ Created backup directory: /var/backups/users
-
-Installation Complete!
-```
-
-### Step 3: Copy Files
-
-```bash
-# Copy main script
-sudo cp scripts/user.sh /opt/admin_dashboard/scripts/
+# Move main script
+sudo mv /tmp/user.sh /opt/admin_dashboard/scripts/
 sudo chmod +x /opt/admin_dashboard/scripts/user.sh
 
-# Copy library modules
-sudo cp scripts/lib/*.sh /opt/admin_dashboard/scripts/lib/
+# Move library files
+sudo mv /tmp/lib/*.sh /opt/admin_dashboard/scripts/lib/
 sudo chmod +x /opt/admin_dashboard/scripts/lib/*.sh
 
-# Copy configuration
-sudo cp config/user_mgmt.conf /opt/admin_dashboard/config/
+# Move config
+sudo mv /tmp/user_mgmt.conf /opt/admin_dashboard/config/
 
-# Copy examples
-sudo cp scripts/examples/* /opt/admin_dashboard/scripts/examples/
+# Move examples
+sudo mv /tmp/examples/* /opt/admin_dashboard/scripts/examples/
 
-# Copy test script
-sudo cp scripts/test_phase1.sh /opt/admin_dashboard/scripts/
+# Move test suite
+sudo mv /tmp/test_phase1.sh /opt/admin_dashboard/scripts/
 sudo chmod +x /opt/admin_dashboard/scripts/test_phase1.sh
-```
 
-### Step 4: Verify Installation
+# Verify installation
+ls -la /opt/admin_dashboard/scripts/
+ls -la /opt/admin_dashboard/scripts/lib/
+ls -la /opt/admin_dashboard/scripts/examples/
+ls -la /opt/admin_dashboard/config/
 
-```bash
-# Check version
-sudo /opt/admin_dashboard/scripts/user.sh --version
-```
+Step 4: Create Required Directories
+# Create log directory
+sudo mkdir -p /var/log
+sudo touch /var/log/user_mgmt.log
+sudo chmod 640 /var/log/user_mgmt.log
 
-**Expected Output:**
-```
-EC2 User Management System v1.0.1
-Build: 2024-01-15
-```
+# Create backup directory
+sudo mkdir -p /var/backups/users/passwords
+sudo chmod 700 /var/backups/users
+sudo chmod 700 /var/backups/users/passwords
 
-### Step 5: Customize Configuration
+# Verify
+ls -la /var/log/user_mgmt.log
+ls -la /var/backups/users/
 
-```bash
+Step 5: Create Symbolic Link (Optional)
+# Create system-wide command
+sudo ln -s /opt/admin_dashboard/scripts/user.sh /usr/local/bin/user-mgmt
+
+# Now you can run:
+sudo user-mgmt --help
+# Instead of:
+sudo /opt/admin_dashboard/scripts/user.sh --help
+
+
+4. Configuration {#configuration}
+Step 1: Review Default Config
+# View current config
+cat /opt/admin_dashboard/config/user_mgmt.conf
+
+# You'll see:
+DEFAULT_PASSWORD="P@ssword1234!"
+PASSWORD_LENGTH=16
+PASSWORD_EXPIRY_DAYS=90
+# ... etc
+
+Step 2: Customize Configuration
 # Edit config file
 sudo nano /opt/admin_dashboard/config/user_mgmt.conf
 
-# IMPORTANT: Change these settings:
-# 1. DEFAULT_PASSWORD="YourStrongPassword123!"
-# 2. USE_UNICODE="yes" or "no" (based on your terminal)
+# IMPORTANT: Change the default password!
+DEFAULT_PASSWORD="YourStrongPassword123!"
 
-# Save: Ctrl+X, Y, Enter
-```
+# Adjust other settings as needed:
+PASSWORD_LENGTH=20              # Longer is better
+PASSWORD_EXPIRY_DAYS=60         # More frequent changes
+USE_UNICODE="no"                # If terminal doesn't support emoji
 
----
+# Save: Ctrl+O, Enter, Ctrl+X
 
-## 🧪 Part 4: Run Tests (5 minutes)
-
-### Step 1: Run Full Test Suite
-
-```bash
+Step 3: Test Configuration
+# Navigate to scripts directory
 cd /opt/admin_dashboard/scripts
+
+# Run version check (tests config loading)
+sudo ./user.sh --version
+
+# Should output:
+# EC2 User Management System v1.0.1
+# Build: 2024-01-15
+
+# Test config validation
+sudo ./user.sh --view summary
+
+# Should show system summary without errors
+
+Step 4: Test Invalid Config (Config Validation Demo)
+# Backup original config
+sudo cp /opt/admin_dashboard/config/user_mgmt.conf /tmp/user_mgmt.conf.backup
+
+# Create intentionally broken config
+sudo nano /opt/admin_dashboard/config/user_mgmt.conf
+
+# Change these values to invalid ones:
+DEFAULT_PASSWORD="weak"           # Too short (< 8 chars)
+PASSWORD_EXPIRY_DAYS="abc"        # Not a number
+MIN_USER_UID="not_a_number"       # Invalid
+BACKUP_DIR="/this/does/not/exist" # Missing directory
+
+# Save and try to run
+sudo ./user.sh --view summary
+
+# Output will show:
+# ⚠️  Config Warning: DEFAULT_PASSWORD too short (min 8 chars, current: 4)
+# ✗ Config Error: PASSWORD_EXPIRY_DAYS must be numeric (current: abc)
+# ✗ Config Error: MIN_USER_UID must be numeric (current: not_a_number)
+# ⚠️  Config Warning: BACKUP_DIR doesn't exist: /this/does/not/exist (will be created)
+# 
+# ℹ️  Config validation: 2 error(s), 2 warning(s)
+# ✗ Please fix config errors in: /opt/admin_dashboard/config/user_mgmt.conf
+
+# Restore working config
+sudo cp /tmp/user_mgmt.conf.backup /opt/admin_dashboard/config/user_mgmt.conf
+
+# Verify it works
+sudo ./user.sh --version
+
+
+5. Testing Suite {#testing}
+Step 1: Run Complete Test Suite
+cd /opt/admin_dashboard/scripts
+
+# Run all tests
 sudo ./test_phase1.sh all
-```
 
-**Expected Output:**
-```
-==========================================
+# Watch output:
+========================================
 Phase 1 Test Suite v1.0.1
-==========================================
+========================================
 
-[Pre-Flight Checks]
+Pre-Flight Checks
 ✓ Running as root
 ✓ user.sh found
 ✓ user.sh is executable
 ✓ jq is installed
 ✓ Test log: /tmp/phase1_test_20240115_143022.log
 
+Running All Tests
 → Testing: Script version
 ✓ PASS: Version check (EC2 User Management System v1.0.1)
-
-→ Testing: Help system
-✓ PASS: Help system displays
-
-→ Testing: Configuration loading
-✓ PASS: Config loads without errors
 
 → Testing: Add user from text file
 ✓ PASS: User created from text file
@@ -277,11 +355,11 @@ Phase 1 Test Suite v1.0.1
 → Testing: Add user with random password
 ✓ PASS: Random password generated and saved
 
-... [24 more tests] ...
+[... 23 more tests ...]
 
-==========================================
+========================================
 Test Results
-==========================================
+========================================
 Tests Run:     26
 Tests Passed:  26
 Tests Failed:  0
@@ -292,82 +370,181 @@ Success Rate: 100%
 ✓ ALL TESTS PASSED!
 
 Phase 1 is ready for production deployment!
-```
 
-### Step 2: Check Test Log
+Test log saved to: /tmp/phase1_test_20240115_143022.log
 
-```bash
-# View test results
+Step 2: Review Test Log
+# View detailed test log
 cat /tmp/phase1_test_*.log
 
-# Check system log
-sudo tail -50 /var/log/user_mgmt.log
-```
+# Sample output:
+[2024-01-15 14:30:22] Version: EC2 User Management System v1.0.1
+[2024-01-15 14:30:23] Created user: testuser001
+[2024-01-15 14:30:24] Created user from JSON: testuser003
+[2024-01-15 14:30:25] Locked user: testuser001
+[2024-01-15 14:30:26] Unlocked user: testuser001
 
----
+Step 3: Run Individual Test Categories
+# Test only user operations
+sudo ./test_phase1.sh add-user
 
-## 🎯 Part 5: Feature Demonstration (10 minutes)
+# Test only reports
+sudo ./test_phase1.sh reports
 
-Now let's showcase all Phase 1 features!
+# Test only exports
+sudo ./test_phase1.sh export
 
-### Demo 1: Basic User Management
+# Test only group operations
+sudo ./test_phase1.sh groups
 
-#### Create Users (Text File)
 
-```bash
-# Create demo users file
-cat > /tmp/demo_users.txt <<EOF
-alice:Alice Johnson - Developer:365:a:yes:
+6. Feature Demonstrations {#demonstrations}
+Demo 1: Basic User Management
+1.1: View Current System State
+cd /opt/admin_dashboard/scripts
+
+# View system summary
+sudo ./user.sh --view summary
+
+# Output:
+==========================================
+User Management System Summary
+==========================================
+
+USERS:
+  Total Users:      3
+  Active:           3
+  Locked:           0
+
+GROUPS:
+  Total Groups:     5
+  Empty Groups:     0
+
+SUDO ACCESS:
+  Users with Sudo:  1
+
+SHELL DISTRIBUTION:
+  /bin/bash:        3 users
+  /sbin/nologin:    0 users
+
+==========================================
+
+1.2: View All Users
+sudo ./user.sh --view users
+
+# Output:
+==========================================
+All Users on System
+==========================================
+USERNAME        UID    PRIMARY_GROUP   SHELL                STATUS   EXPIRES
+--------------------------------------------------------------------------------
+ec2-user        1000   ec2-user        /bin/bash            ACTIVE   Never
+--------------------------------------------------------------------------------
+Total: 1 users
+
+1.3: Create Test Users File
+# Create sample users file
+cat > /tmp/new_users.txt << 'EOF'
+alice:Alice Johnson - Developer:90:a:yes:
 bob:Bob Smith - Tester:180:a:no:random
-charlie:Charlie Brown - Contractor:90:a:no:
+charlie:Charlie Brown - DevOps::a:yes:random
+diana:Diana Prince - Manager:365:a:no:
 EOF
 
-# Add users
-sudo ./user.sh --add user --names /tmp/demo_users.txt
+# View the file
+cat /tmp/new_users.txt
 
-# View results
-sudo ./user.sh --view users
-```
+1.4: Test Dry-Run Mode
+# Test without making changes
+sudo ./user.sh --add user --names /tmp/new_users.txt --dry-run
 
-**Expected Output:**
-```
+# Output:
 ==========================================
-Adding Users from: /tmp/demo_users.txt
+Adding Users from: /tmp/new_users.txt
+🔍 DRY-RUN MODE
 ==========================================
 
+🔍 [DRY-RUN] Would create user: alice
+   - Comment: Alice Johnson - Developer
+   - Home: /home/alice
+   - Shell: /bin/bash
+   - Account expires: 2024-04-15
+   - Sudo: enabled
+   - Password expires every: 90 days
+
+🔍 [DRY-RUN] Would create user: bob
+   - Comment: Bob Smith - Tester
+   - Home: /home/bob
+   - Shell: /bin/bash
+   - Account expires: 2024-07-14
+   - Password: random (unique)
+   - Password expires every: 90 days
+
+[... continues for charlie and diana ...]
+
+==========================================
+Summary:
+  Total processed: 4
+  Created: 4
+  Skipped: 0
+  Failed: 0
+==========================================
+
+1.5: Actually Create Users
+# Create users for real
+sudo ./user.sh --add user --names /tmp/new_users.txt
+
+# Output shows actual creation with passwords
 👤 Creating user: alice
    ✓ User created
    🔐 Default password set
    🔄 Must change password on first login
    ⏱️  Password expires every: 90 days
-   📅 Account expires: 2025-01-15
+   📅 Account expires: 2024-04-15
    🔐 Sudo access: granted
-   
+   💬 Comment: Alice Johnson - Developer
+   🐚 Shell: /bin/bash
+
 👤 Creating user: bob
    ✓ User created
-   🔑 Random password: aB3$xK9mP2qR4vL8
+   🔑 Random password: Xt9#mK2pL4vN8qR1
    🔄 Must change password on first login
-   📄 Password saved: /var/backups/passwords/bob_20240115_143045.txt
+   ⏱️  Password expires every: 90 days
+   📅 Account expires: 2024-07-14
+   💬 Comment: Bob Smith - Tester
+   🐚 Shell: /bin/bash
+   📄 Password saved: /var/backups/users/passwords/bob_20240115_143500.txt
 
-... 
+[... continues ...]
 
 ==========================================
 Summary:
-  Total processed: 3
-  Created: 3
+  Total processed: 4
+  Created: 4
   Skipped: 0
   Failed: 0
 ==========================================
-```
 
-#### View User Details
+1.6: Verify Users Created
+# View all users again
+sudo ./user.sh --view users
 
-```bash
+# Now shows:
+USERNAME        UID    PRIMARY_GROUP   SHELL                STATUS   EXPIRES
+--------------------------------------------------------------------------------
+ec2-user        1000   ec2-user        /bin/bash            ACTIVE   Never
+alice           1001   alice           /bin/bash            ACTIVE   2024-04-15
+bob             1002   bob             /bin/bash            ACTIVE   2024-07-14
+charlie         1003   charlie         /bin/bash            ACTIVE   Never
+diana           1004   diana           /bin/bash            ACTIVE   2025-01-15
+--------------------------------------------------------------------------------
+Total: 5 users
+
+1.7: View Detailed User Information
+# View alice's details
 sudo ./user.sh --view user --name alice
-```
 
-**Expected Output:**
-```
+# Output:
 ==========================================
 User Details: alice
 ==========================================
@@ -391,7 +568,7 @@ LOGIN INFORMATION:
   Last Login:       Never
 
 ACCOUNT EXPIRATION:
-  Account Expires:  2025-01-15
+  Account Expires:  Apr 15 2024
 
 RESOURCE USAGE:
   Home Directory:   4.0K
@@ -402,175 +579,267 @@ SUDO ACCESS:
   Has Sudo:         YES ⚠️
 
 ==========================================
-```
 
-### Demo 2: JSON Operations
+Demo 2: Input Validation
+2.1: Test Invalid Username
+# Create file with invalid username
+cat > /tmp/invalid_users.txt << 'EOF'
+Invalid-User:Test:90:a:no:
+123startwithnumber:Test:90:a:no:
+user with spaces:Test:90:a:no:
+EOF
 
-#### Create Users from JSON
+# Try to add
+sudo ./user.sh --add user --names /tmp/invalid_users.txt
 
-```bash
+# Output:
+✗ INVALID user NAME: 'Invalid-User'
+   Rules: Start with a-z or _, only use a-z 0-9 _ -, max 32 chars
+
+✗ INVALID user NAME: '123startwithnumber'
+   Rules: Start with a-z or _, only use a-z 0-9 _ -, max 32 chars
+
+✗ INVALID user NAME: 'user with spaces'
+   Rules: Start with a-z or _, only use a-z 0-9 _ -, max 32 chars
+
+==========================================
+Summary:
+  Total processed: 3
+  Created: 0
+  Skipped: 0
+  Failed: 3
+==========================================
+
+2.2: Test Invalid Date Format
+# Create user with invalid expiry date
+cat > /tmp/bad_date.txt << 'EOF'
+testuser:Test User:not-a-date:a:no:
+EOF
+
+sudo ./user.sh --add user --names /tmp/bad_date.txt
+
+# Output:
+✗ Invalid expiry date for testuser: not-a-date
+
+==========================================
+Summary:
+  Total processed: 1
+  Created: 0
+  Skipped: 0
+  Failed: 1
+==========================================
+
+Demo 3: User Lock/Unlock
+3.1: Lock a User
+# Lock bob's account
+sudo ./user.sh --lock user --name bob --reason "Security incident - suspicious activity"
+
+# Output:
+🔒 Locking user: bob
+   Reason: Security incident - suspicious activity
+   ✓ User locked successfully
+
+User 'bob' is now locked:
+  - Cannot login via SSH or terminal
+  - Existing sessions remain active
+  - All data preserved
+  - Can be unlocked: ./user.sh --unlock user --name bob
+
+3.2: Verify Lock Status
+# Check bob's status
+sudo ./user.sh --view user --name bob
+
+# Shows:
+ACCOUNT STATUS:
+  Status:           LOCKED
+
+# Also verify with system command
+sudo passwd -S bob
+# Output: bob L 01/15/2024 0 99999 7 -1 (Password locked.)
+
+3.3: Unlock User
+# Unlock bob
+sudo ./user.sh --unlock user --name bob
+
+# Output:
+🔓 Unlocking user: bob
+   ✓ User unlocked successfully
+
+User 'bob' is now unlocked and can login
+
+Demo 4: JSON Operations
+4.1: Create Users from JSON
 # Create JSON file
-cat > /tmp/demo_roles.json <<EOF
+cat > /tmp/team_members.json << 'EOF'
 {
-  "roles": {
-    "developer": {
-      "groups": ["developers", "git", "docker"],
+  "users": [
+    {
+      "username": "john",
+      "comment": "John Doe - Backend Developer",
+      "groups": ["developers", "docker"],
       "shell": "/bin/bash",
-      "password_expiry_days": 90,
-      "description": "Software developers"
+      "expire_days": 180,
+      "password_policy": {
+        "type": "random",
+        "expiry_days": 90
+      }
     },
-    "qa_engineer": {
-      "groups": ["testers", "qa"],
+    {
+      "username": "jane",
+      "comment": "Jane Smith - Frontend Developer",
+      "groups": ["developers", "git"],
       "shell": "/bin/bash",
-      "password_expiry_days": 90,
-      "description": "QA testers"
+      "expire_days": 180,
+      "password_policy": {
+        "type": "random",
+        "expiry_days": 60
+      }
     }
-  },
-  "assignments": [
-    {"username": "david", "role": "developer"},
-    {"username": "emma", "role": "qa_engineer"}
   ]
 }
 EOF
 
-# Create groups first
-echo -e "developers\ntesters\ngit\ndocker\nqa" | sudo tee /tmp/groups.txt
-sudo ./user.sh --add group --names /tmp/groups.txt
+# Add users from JSON
+sudo ./user.sh --add user --input /tmp/team_members.json --format json
 
-# Apply roles
-sudo ./user.sh --apply-roles /tmp/demo_roles.json
-```
-
-**Expected Output:**
-```
+# Output (JSON format):
 {
-  "operation": "apply_roles",
-  "timestamp": "2024-01-15 14:35:22",
-  "source_file": "/tmp/demo_roles.json",
+  "operation": "bulk_add_users_from_json",
+  "timestamp": "2024-01-15 14:45:30",
+  "source_file": "/tmp/team_members.json",
   "results": [
-    {"username":"david","role":"developer","status":"success","groups":"developers,git,docker"},
-    {"username":"emma","role":"qa_engineer","status":"success","groups":"testers,qa"}
+    {"username":"john","status":"success","uid":1005},
+    {"username":"jane","status":"success","uid":1006}
   ],
   "summary": {
     "total": 2,
     "success": 2,
+    "failed": 0,
+    "duration_seconds": 2
+  }
+}
+
+4.2: Test Invalid JSON Structure
+# Create malformed JSON
+cat > /tmp/bad.json << 'EOF'
+{
+  "user": [
+    {"username": "test"}
+  ]
+}
+EOF
+
+# Try to use it
+sudo ./user.sh --add user --input /tmp/bad.json --format json
+
+# Output:
+{"error":"Invalid JSON structure - missing 'users' array","file":"/tmp/bad.json"}
+
+4.3: Apply Roles from JSON
+# Use the provided example
+sudo ./user.sh --apply-roles /opt/admin_dashboard/scripts/examples/roles.json
+
+# Output shows role assignments
+{
+  "operation": "apply_roles",
+  "timestamp": "2024-01-15 14:50:00",
+  "source_file": "/opt/admin_dashboard/scripts/examples/roles.json",
+  "results": [
+    {"username":"alice","role":"senior_developer","status":"success","groups":"developers,git,docker,deploy"},
+    {"username":"bob","role":"qa_tester","status":"success","groups":"testers,qa"}
+  ],
+  "summary": {
+    "total": 8,
+    "success": 8,
     "failed": 0
   }
 }
-```
 
-### Demo 3: Lock/Unlock Users
+Demo 5: Search & Filter
+5.1: Search Users by Pattern
+# Search for users containing "alice"
+sudo ./user.sh --search users --pattern "alice"
 
-```bash
-# Lock user
-sudo ./user.sh --lock user --name charlie --reason "Contractor on leave"
-
-# Check status
-sudo ./user.sh --view user --name charlie | grep Status
-
-# Unlock user
-sudo ./user.sh --unlock user --name charlie
-```
-
-**Expected Output:**
-```
-🔒 Locking user: charlie
-   Reason: Contractor on leave
-   ✓ User locked successfully
-
-User 'charlie' is now locked:
-  - Cannot login via SSH or terminal
-  - Existing sessions remain active
-  - All data preserved
-  - Can be unlocked: ./user.sh --unlock user --name charlie
-
----
-
-  Status:           LOCKED
-
----
-
-🔓 Unlocking user: charlie
-   ✓ User unlocked successfully
-
-User 'charlie' is now unlocked and can login
-```
-
-### Demo 4: Search & Filter
-
-```bash
-# Search for users with "dev" in name
-sudo ./user.sh --search users --pattern "dev"
-
-# View all sudo users
-sudo ./user.sh --view users --filter sudo
-
-# Get JSON output
-sudo ./user.sh --search users --pattern "alice" --json | jq
-```
-
-**Expected Output:**
-```
+# Output:
 ==========================================
 Search Results: Users
-Pattern: dev
+Pattern: alice
 ==========================================
 
-Username: david (UID: 1004)
+Username: alice (UID: 1001)
   Status:        ACTIVE
-  Primary Group: david
+  Primary Group: alice
   Shell:         bash
 
 Found: 1 user(s)
 
----
+5.2: Search Users with Sudo
+# Find all sudo users
+sudo ./user.sh --search users --status sudo
 
-USERNAME        UID    PRIMARY_GROUP   SHELL                STATUS   EXPIRES
---------------------------------------------------------------------------------
-alice           1001   alice           bash                 ACTIVE   2025-01-15
-david           1004   david           bash                 ACTIVE   Never
---------------------------------------------------------------------------------
-Total: 2 users
+# Output:
+==========================================
+Search Results: Users
+Status: sudo
+==========================================
 
----
+Username: ec2-user (UID: 1000)
+  Status:        ACTIVE
+  Primary Group: ec2-user
+  Shell:         bash
 
+Username: alice (UID: 1001)
+  Status:        ACTIVE
+  Primary Group: alice
+  Shell:         bash
+
+Username: charlie (UID: 1003)
+  Status:        ACTIVE
+  Primary Group: charlie
+  Shell:         bash
+
+Found: 3 user(s)
+
+5.3: JSON Output for Search
+# Get JSON output
+sudo ./user.sh --search users --status sudo --json
+
+# Output (formatted):
 [
+  {
+    "username": "ec2-user",
+    "uid": 1000,
+    "primary_group": "ec2-user",
+    "groups": ["ec2-user","adm","wheel","systemd-journal"],
+    "shell": "bash",
+    "status": "ACTIVE"
+  },
   {
     "username": "alice",
     "uid": 1001,
     "primary_group": "alice",
-    "groups": ["alice", "sudo"],
+    "groups": ["alice","sudo","developers"],
     "shell": "bash",
     "status": "ACTIVE"
   }
 ]
-```
 
-### Demo 5: Security Reports
-
-```bash
-# Security audit report
+Demo 6: Reports
+6.1: Security Audit Report
 sudo ./user.sh --report security
 
-# Compliance report
-sudo ./user.sh --report compliance
-
-# Activity report (last 30 days)
-sudo ./user.sh --report activity --days 30
-
-# Get JSON output
-sudo ./user.sh --report security --json | jq
-```
-
-**Expected Output:**
-```
+# Output:
 ==========================================
 Security Audit Report
-Generated: 2024-01-15 14:40:15
+Generated: 2024-01-15 14:55:00
 ==========================================
 
 1. USERS WITH SUDO ACCESS:
+  ⚠️  ec2-user (UID: 1000, Status: ACTIVE)
+      Last login: Mon Jan 15 14:30:00 2024 from 203.0.113.45
   ⚠️  alice (UID: 1001, Status: ACTIVE)
+      Last login: Never
+  ⚠️  charlie (UID: 1003, Status: ACTIVE)
       Last login: Never
 
 2. LOCKED ACCOUNTS:
@@ -580,7 +849,7 @@ Generated: 2024-01-15 14:40:15
   ✓ None found
 
 4. ACCOUNTS WITHOUT PASSWORD EXPIRY:
-  ⚠️  root (Status: ACTIVE)
+  ⚠️  ec2-user (Status: ACTIVE)
 
 5. EMPTY GROUPS:
   ✓ No empty groups
@@ -588,38 +857,111 @@ Generated: 2024-01-15 14:40:15
 6. USERS IN SYSTEM GROUPS (GID < 1000):
   ✓ No regular users in system groups
 
+7. USERS WITHOUT SHELL (Service Accounts):
+  ✓ All users have login shells
+
+8. DUPLICATE UIDs:
+  ✓ No duplicate UIDs
+
+9. DUPLICATE GIDs:
+  ✓ No duplicate GIDs
+
 ==========================================
 SECURITY SUMMARY:
-  Sudo users:           1
+  Sudo users:           3
   Locked accounts:      0
   Expired passwords:    0
   No password expiry:   1
   Empty groups:         0
   System group members: 0
+  Service accounts:     0
 ==========================================
-```
 
-### Demo 6: Export Data
+6.2: Compliance Report
+sudo ./user.sh --report compliance
 
-```bash
-# Export users to CSV
+# Shows password policy compliance, inactive accounts, etc.
+
+6.3: Activity Report
+# Last 7 days of activity
+sudo ./user.sh --report activity --days 7
+
+# Output:
+==========================================
+Activity Report (Last 7 days)
+Generated: 2024-01-15 14:56:00
+==========================================
+
+1. LOGIN FREQUENCY:
+  Top 10 Most Active Users:
+    ec2-user: 5 logins
+
+2. INACTIVE USERS (No login in last 7 days):
+  ⚠️  alice - Never logged in
+  ⚠️  bob - Never logged in
+  ⚠️  charlie - Never logged in
+  ⚠️  diana - Never logged in
+  ⚠️  john - Never logged in
+  ⚠️  jane - Never logged in
+
+3. FAILED LOGIN ATTEMPTS (Last 7 days):
+  Total failed attempts: 0
+
+4. RECENT ACCOUNT MODIFICATIONS:
+  [2024-01-15 14:35:22] add_user alice SUCCESS
+  [2024-01-15 14:35:23] add_user bob SUCCESS
+  [2024-01-15 14:35:24] add_user charlie SUCCESS
+  [2024-01-15 14:35:25] add_user diana SUCCESS
+
+==========================================
+
+6.4: Storage Report
+sudo ./user.sh --report storage
+
+# Output:
+==========================================
+Storage Report
+Generated: 2024-01-15 14:57:00
+==========================================
+
+1. TOP 10 LARGEST HOME DIRECTORIES:
+  ec2-user: 24MB
+  alice: 4MB
+  bob: 4MB
+  charlie: 4MB
+  diana: 4MB
+  john: 4MB
+  jane: 4MB
+
+2. STORAGE BY PRIMARY GROUP:
+  ec2-user: 24MB
+  alice: 4MB
+  bob: 4MB
+  charlie: 4MB
+  diana: 4MB
+  john: 4MB
+  jane: 4MB
+
+3. TOTAL STORAGE SUMMARY:
+  Total home directories: 52MB (0.05GB)
+  Number of users: 7
+  Average per user: 7MB
+
+4. ORPHANED FILES CHECK:
+  Scanning /home for orphaned files...
+  ✓ No orphaned files found
+
+5. LARGE FILES (>100MB):
+  ✓ No files larger than 100MB
+
+==========================================
+
+Demo 7: Export Data
+7.1: Export to CSV
+# Export all users to CSV
 sudo ./user.sh --export users --output /tmp/users.csv --format csv
 
-# View CSV
-cat /tmp/users.csv
-
-# Export to JSON
-sudo ./user.sh --export users --output /tmp/users.json --format json
-
-# View JSON
-cat /tmp/users.json | jq
-
-# Export complete system state
-sudo ./user.sh --export all --output /tmp/system_backup.json --format json
-```
-
-**Expected Output:**
-```
+# Output:
 ==========================================
 Exporting Data
 ==========================================
@@ -629,101 +971,304 @@ Output:  /tmp/users.csv
 
 ✓ Export complete
   File: /tmp/users.csv
-  Size: 2.1K
+  Size: 1.2K
 
----
+# View the file
+cat /tmp/users.csv
 
+# Output:
 username,uid,primary_group,gid,home,shell,status,comment,last_login,groups
-alice,1001,alice,1001,/home/alice,/bin/bash,ACTIVE,"Alice Johnson - Developer",Never,"alice;sudo"
-bob,1002,bob,1002,/home/bob,/bin/bash,ACTIVE,"Bob Smith - Tester",Never,"bob"
-...
-```
+ec2-user,1000,ec2-user,1000,/home/ec2-user,/bin/bash,ACTIVE,"",Mon_Jan_15_14:30:00_2024,"ec2-user;adm;wheel"
+alice,1001,alice,1001,/home/alice,/bin/bash,ACTIVE,"Alice Johnson - Developer",Never,"alice;sudo;developers"
+bob,1002,bob,1002,/home/bob,/bin/bash,ACTIVE,"Bob Smith - Tester",Never,"bob;testers;qa"
+charlie,1003,charlie,1003,/home/charlie,/bin/bash,ACTIVE,"Charlie Brown - DevOps",Never,"charlie;sudo;developers;deploy"
+diana,1004,diana,1004,/home/diana,/bin/bash,ACTIVE,"Diana Prince - Manager",Never,"diana;managers"
 
-### Demo 7: Recent Login Tracking
+7.2: Export to JSON
+# Export all users to JSON
+sudo ./user.sh --export users --output /tmp/users.json --format json
 
-```bash
-# View recent logins (last 24 hours)
-sudo ./user.sh --view recent-logins
+# View the file (formatted)
+cat /tmp/users.json | jq .
 
-# Last 7 days
-sudo ./user.sh --view recent-logins --days 7
+# Output:
+{
+  "export_date": "2024-01-15T14:58:00Z",
+  "export_by": "ec2-user",
+  "users": [
+    {
+      "username": "ec2-user",
+      "uid": 1000,
+      "gid": 1000,
+      "primary_group": "ec2-user",
+      "home": "/home/ec2-user",
+      "shell": "/bin/bash",
+      "status": "ACTIVE",
+      "comment": "",
+      "last_login": "Mon Jan 15 14:30:00 2024",
+      "groups": ["ec2-user", "adm", "wheel"]
+    },
+    {
+      "username": "alice",
+      "uid": 1001,
+      "gid": 1001,
+      "primary_group": "alice",
+      "home": "/home/alice",
+      "shell": "/bin/bash",
+      "status": "ACTIVE",
+      "comment": "Alice Johnson - Developer",
+      "last_login": "Never",
+      "groups": ["alice", "sudo", "developers"]
+    }
+  ]
+}
 
-# Specific user
-sudo ./user.sh --view recent-logins --user ec2-user --days 7
-```
+7.3: Export Complete System State
+# Export everything (users + groups + metadata)
+sudo ./user.sh --export all --output /tmp/system_backup.json --format json
 
-**Expected Output:**
-```
+# View summary
+cat /tmp/system_backup.json | jq '{export_date, hostname, system}'
+
+# Output:
+{
+  "export_date": "2024-01-15T14:59:00Z",
+  "hostname": "ip-172-31-45-123.ec2.internal",
+  "system": {
+    "total_users": 7,
+    "total_groups": 12
+  }
+}
+
+7.4: Export to Table Format
+# Export as pretty table
+sudo ./user.sh --export users --output /tmp/users_table.txt --format table
+
+# View file
+cat /tmp/users_table.txt
+
+# Output:
 ==========================================
-Recent Logins
-Period: Last 7 days
-Generated: 2024-01-15 14:45:00
+User Export - Table Format
+Generated: 2024-01-15 15:00:00
 ==========================================
 
-USERNAME        TIME                 FROM                 DURATION
+USERNAME        UID    PRIMARY_GROUP   SHELL                STATUS
 ------------------------------------------------------------------------
-ec2-user        2024-01-15 14:30     203.0.113.45        Active (0h 15m)
-ec2-user        2024-01-14 09:15     203.0.113.45        Logged out (2h 30m)
+ec2-user        1000   ec2-user        bash                 ACTIVE
+alice           1001   alice           bash                 ACTIVE
+bob             1002   bob             bash                 ACTIVE
+charlie         1003   charlie         bash                 ACTIVE
+diana           1004   diana           bash                 ACTIVE
+john            1005   john            bash                 ACTIVE
+jane            1006   jane            bash                 ACTIVE
 ------------------------------------------------------------------------
-Total logins: 2
-```
 
-### Demo 8: System Summary
+Demo 8: Group Management
+8.1: Create Groups
+# Create groups file
+cat > /tmp/new_groups.txt << 'EOF'
+developers
+testers
+devops
+managers
+contractors
+EOF
 
-```bash
-sudo ./user.sh --view summary
-```
+# Add groups
+sudo ./user.sh --add group --names /tmp/new_groups.txt
 
-**Expected Output:**
-```
+# Output:
 ==========================================
-User Management System Summary
+Adding Groups from: /tmp/new_groups.txt
 ==========================================
 
-USERS:
-  Total Users:      5
-  Active:           5
-  Locked:           0
+👥 Creating group: developers
 
-GROUPS:
-  Total Groups:     8
-  Empty Groups:     0
+⚠️  Group 'testers' already exists. Skipping...
 
-SUDO ACCESS:
-  Users with Sudo:  1
+👥 Creating group: devops
 
-SHELL DISTRIBUTION:
-  /bin/bash:        5 users
-  /sbin/nologin:    0 users
+👥 Creating group: managers
+
+⚠️  Group 'contractors' already exists. Skipping...
 
 ==========================================
-```
-
-### Demo 9: Safe User Deletion
-
-```bash
-# Check before deletion
-sudo ./user.sh --delete user --name charlie --check
-
-# Interactive deletion with backup
-sudo ./user.sh --delete user --name charlie --interactive
-
-# Or automated with backup
-sudo ./user.sh --delete user --name charlie --backup \
-  --backup-dir /var/backups/users --force-logout
-```
-
-**Expected Output:**
-```
+Summary:
+  Total processed: 5
+  Created: 2
+  Skipped: 3
+  Failed: 0
 ==========================================
-Pre-Deletion Check: charlie
+
+8.2: View All Groups
+sudo ./user.sh --view groups
+
+# Output:
+==========================================
+All Groups on System
+==========================================
+GROUP_NAME           GID    MEMBERS                                  COUNT
+--------------------------------------------------------------------------------
+developers           1010   alice,charlie,john,jane                  4
+testers              1011   bob,jane                                 2
+devops               1012   charlie                                  1
+managers             1013   diana                                    1
+contractors          1014   none                                     0
+--------------------------------------------------------------------------------
+Total: 5 groups
+
+8.3: View Group Details
+sudo ./user.sh --view group --name developers
+
+# Output:
+==========================================
+Group Details: developers
+==========================================
+
+BASIC INFORMATION:
+  Group Name:       developers
+  GID:              1010
+  Type:             User group
+
+MEMBERS: 4
+  alice (UID: 1001, primary: alice, ACTIVE)
+  charlie (UID: 1003, primary: charlie, ACTIVE)
+  john (UID: 1005, primary: john, ACTIVE)
+  jane (UID: 1006, primary: jane, ACTIVE)
+
+PRIMARY GROUP FOR: 0 users
+  (not used as primary group)
+
+==========================================
+
+8.4: Add Members to Group
+# Add bob to developers group
+sudo ./user.sh --update group --name developers --add-members bob
+
+# Output:
+Adding members to group: developers
+Members: bob
+
+  ✓ Added: bob
+
+Summary: 1 added, 0 failed
+
+Current members:
+alice,charlie,john,jane,bob
+
+8.5: Manage Groups from JSON
+# Use example file
+sudo ./user.sh --manage-groups /opt/admin_dashboard/scripts/examples/groups.json
+
+# Shows creation/deletion of groups based on JSON
+
+Demo 9: User Update Operations
+9.1: Update User Password
+# Reset alice's password
+sudo ./user.sh --update user --name alice --reset-password
+
+# Output:
+==========================================
+Password Reset: alice
+==========================================
+
+Generated random password
+
+✓ Password reset successfully
+✓ User MUST change password on next login
+
+==========================================
+Temporary Password: mN8pQ2xR5tK9wL3v
+==========================================
+
+⚠️  Securely provide this password to alice
+
+Password saved to: /var/backups/users/passwords/alice_20240115_150500.txt
+
+9.2: Change User Shell
+# Change bob's shell to nologin (service account)
+sudo ./user.sh --update user --name bob --shell d
+
+# Output:
+Changing shell for: bob
+  Current: /bin/bash
+  New:     /sbin/nologin
+
+✓ Shell changed successfully
+
+9.3: Add User to Multiple Groups
+# Add diana to multiple groups
+sudo ./user.sh --update user --name diana --add-to-groups "developers,managers,viewers"
+
+# Output:
+Adding diana to groups: developers,managers,viewers
+
+  ✓ Added to: developers
+  ✓ Added to: managers
+  ✓ Added to: viewers
+
+Summary: 3 added, 0 failed
+
+Current groups:
+diana developers managers viewers
+
+9.4: Set Account Expiration
+# Set john's account to expire in 30 days
+sudo ./user.sh --update user --name john --expire 30
+
+# Output:
+Updating account expiration for: john
+
+Setting: 30 days from now (2024-02-14)
+
+✓ Account expiration updated
+
+Account expires                                        : Feb 14, 2024
+
+9.5: Update Password Expiry Policy
+# Make jane change password every 30 days (high security)
+sudo ./user.sh --update user --name jane --password-expiry 30
+
+# Output:
+Updating password expiry policy for: jane
+
+Setting: Password expires every 30 days
+
+✓ Password expiry policy updated
+
+Maximum number of days between password change        : 30
+
+9.6: Update User Comment
+# Update alice's description
+sudo ./user.sh --update user --name alice --comment "Alice Johnson - Lead Developer"
+
+# Output:
+Updating comment for: alice
+  Current: Alice Johnson - Developer
+  New:     Alice Johnson - Lead Developer
+
+✓ Comment updated successfully
+
+Demo 10: User Deletion (Safe Methods)
+10.1: Pre-Deletion Check
+# Check what will happen before deleting
+sudo ./user.sh --delete user --name john --check
+
+# Output:
+==========================================
+Pre-Deletion Check: john
 ==========================================
 
 USER INFORMATION:
-  Username:        charlie
-  UID:             1003
-  Primary Group:   charlie (1003)
-  ...
+  Username:        john
+  UID:             1005
+  Primary Group:   john (1005)
+  Secondary Groups: john developers docker
+  Comment:         John Doe - Backend Developer
+  Home:            /home/john
+  Shell:           /bin/bash
+  Status:          ACTIVE
 
 LOGIN STATUS:
   ✓ Not logged in
@@ -734,392 +1279,661 @@ ACTIVE PROCESSES:
 CRON JOBS:
   ✓ No cron jobs
 
+MAIL:
+  ✓ No mail
+
 HOME DIRECTORY:
-  ℹ️ /home/charlie
+  ℹ️  /home/john
      Size:  4.0K
-     Files: 2
+     Files: 3
+
+FILES OUTSIDE HOME:
+  ✓ No files outside home
+
+SUDO ACCESS:
+  ✓ No sudo access
 
 ==========================================
 ✓ Safe to delete (no warnings)
+
+NEXT STEPS:
+  Delete: ./user.sh --delete user --name john
 ==========================================
 
----
+10.2: Interactive Deletion
+# Delete with prompts
+sudo ./user.sh --delete user --name john
 
-📦 Creating backup: /var/backups/users/charlie_20240115_144522
+# Output:
+==========================================
+Interactive User Deletion: john
+==========================================
+
+Summary:
+  User: john
+  Status: Not logged in
+  Processes: 0
+
+Step 3: Backup user data?
+Enter backup directory path (or 'skip'): /tmp/backups
+
+📦 Creating backup: /tmp/backups/john_20240115_151000
   Backing up home directory...
   ✓ Home backed up
-  ✓ Crontab backed up
-✓ Backup complete
+  ✓ Backup complete: /tmp/backups/john_20240115_151000
 
-🗑️  Deleting user: charlie
+Step 4: Home directory
+  [d] Delete home directory
+  [k] Keep home directory
+Choice [d/k]: d
+
+Step 5: Final confirmation
+  User: john
+  Delete home: true
+  Backup: /tmp/backups/john_20240115_151000
+
+Proceed with deletion? [yes/no]: yes
+
+🗑️  Deleting user: john
 ✓ User deleted successfully
-📦 Backup saved: /var/backups/users/charlie_20240115_144522
-```
-
-### Demo 10: Dry-Run Mode
-
-```bash
-# Test operations without making changes
-sudo ./user.sh --add user --names /tmp/demo_users.txt --dry-run
-
-# Everything shows what WOULD happen, but nothing changes
-```
-
-**Expected Output:**
-```
-==========================================
-           🔍 DRY-RUN MODE
-      NO CHANGES WILL BE MADE
-==========================================
-
-🔍 [DRY-RUN] Would create user: alice
-   - Comment: Alice Johnson - Developer
-   - Home: /home/alice
-   - Shell: /bin/bash
-   - Account expires: 2025-01-15
-   - Sudo: enabled
-```
-
----
-
-## 📊 Part 6: View Logs & Audit Trail (2 minutes)
-
-### Check System Logs
-
-```bash
-# View recent operations
-sudo tail -50 /var/log/user_mgmt.log
-
-# Search for specific user
-sudo grep "alice" /var/log/user_mgmt.log
-
-# View all password resets
-sudo grep "reset_password" /var/log/user_mgmt.log
-```
-
-**Expected Output:**
-```
-[2024-01-15 14:32:15] ACTION=add_user TARGET=alice RESULT=SUCCESS MESSAGE=shell=/bin/bash, sudo=yes USER=ec2-user
-[2024-01-15 14:32:16] ACTION=add_user TARGET=bob RESULT=SUCCESS MESSAGE=shell=/bin/bash, sudo=no, random_pwd=yes USER=ec2-user
-[2024-01-15 14:38:22] ACTION=lock_user TARGET=charlie RESULT=SUCCESS MESSAGE=Reason: Contractor on leave USER=ec2-user
-[2024-01-15 14:40:10] ACTION=unlock_user TARGET=charlie RESULT=SUCCESS MESSAGE=User unlocked USER=ec2-user
-```
-
-### Check Backup Files
-
-```bash
-# List all backups
-sudo ls -lh /var/backups/users/
-
-# View backup metadata
-sudo cat /var/backups/users/charlie_*/metadata.txt
-
-# List password files
-sudo ls -lh /var/backups/passwords/
-```
-
----
-
-## 🎓 Part 7: Using Example Templates (3 minutes)
-
-### Explore Examples
-
-```bash
-cd /opt/admin_dashboard/scripts/examples
-
-# View README
-cat README.md
-
-# View example files
-cat users.json
-cat roles.json
-cat groups.json
-cat deletions.json
-```
-
-### Use Example Template
-
-```bash
-# Copy example
-cp users.json my_team.json
-
-# Edit for your needs
-nano my_team.json
-
-# Apply
-sudo ../user.sh --add user --input my_team.json --format json
-```
-
----
-
-## 📸 Part 8: Create Demo Screenshots
-
-Take screenshots of these key features:
-
-1. **System Summary**
-   ```bash
-   sudo ./user.sh --view summary
-   ```
-
-2. **User List**
-   ```bash
-   sudo ./user.sh --view users
-   ```
-
-3. **Security Report**
-   ```bash
-   sudo ./user.sh --report security
-   ```
-
-4. **JSON Output**
-   ```bash
-   sudo ./user.sh --view summary --json | jq
-   ```
-
-5. **Test Results**
-   ```bash
-   sudo ./test_phase1.sh all
-   ```
-
----
-
-## 🎬 Part 9: Record Demo Video (Optional)
-
-### Demo Script (5 minutes)
-
-```bash
-# 1. Introduction
-echo "Phase 1 User Management System Demo"
-sudo ./user.sh --version
-
-# 2. View current state
-sudo ./user.sh --view summary
-
-# 3. Create users
-sudo ./user.sh --add user --names /tmp/demo_users.txt
-
-# 4. View users
-sudo ./user.sh --view users
-
-# 5. Security report
-sudo ./user.sh --report security
-
-# 6. Lock user
-sudo ./user.sh --lock user --name bob
-
-# 7. Export data
-sudo ./user.sh --export users --output /tmp/export.json --format json
-
-# 8. Show JSON output
-cat /tmp/export.json | jq
-
-# 9. Cleanup
-sudo ./user.sh --delete user --name bob --check
-```
-
----
-
-## 🧹 Part 10: Cleanup (Optional)
-
-### Remove Demo Users
-
-```bash
-# List demo users
-sudo ./user.sh --view users | grep -E "alice|bob|charlie|david|emma"
-
-# Delete demo users
-for user in alice bob charlie david emma; do
-  sudo ./user.sh --delete user --name $user --backup \
-    --backup-dir /var/backups/demo_cleanup
-done
-
-# Delete demo groups
-for group in developers testers git docker qa; do
-  if getent group $group &>/dev/null; then
-    sudo groupdel $group
-  fi
-done
-```
-
-### Keep System for Phase 2
-
-**DON'T terminate the EC2 instance!** You'll need it for Phase 2.
-
----
-
-## 📝 Part 11: Documentation for Team
-
-### Create Quick Reference Card
-
-```bash
-# Save to file
-cat > ~/phase1_quick_reference.txt <<EOF
-===========================================
-Phase 1 - Quick Reference Card
-===========================================
-
-Common Commands:
-
-View Users:
-  sudo /opt/admin_dashboard/scripts/user.sh --view users
-
-Add User:
-  sudo /opt/admin_dashboard/scripts/user.sh --add user --names users.txt
-
-Lock User:
-  sudo /opt/admin_dashboard/scripts/user.sh --lock user --name USERNAME
-
-Security Report:
-  sudo /opt/admin_dashboard/scripts/user.sh --report security
-
-Export Data:
-  sudo /opt/admin_dashboard/scripts/user.sh --export users --output file.json --format json
-
-Help:
-  sudo /opt/admin_dashboard/scripts/user.sh --help
-
-Logs:
-  sudo tail -f /var/log/user_mgmt.log
-
-Config:
-  /opt/admin_dashboard/config/user_mgmt.conf
-
-Examples:
-  /opt/admin_dashboard/scripts/examples/
-
-===========================================
+📦 Backup saved: /tmp/backups/john_20240115_151000
+
+10.3: View Backup Contents
+# Check what was backed up
+ls -la /tmp/backups/john_20240115_151000/
+
+# Output:
+total 24
+drwx------. 2 root root 4096 Jan 15 15:10 .
+drwxr-xr-x. 3 root root 4096 Jan 15 15:10 ..
+-rw-------. 1 root root 2048 Jan 15 15:10 home_backup.tar.gz
+-rw-------. 1 root root  256 Jan 15 15:10 metadata.txt
+-rw-------. 1 root root    0 Jan 15 15:10 file_list.txt
+
+# View metadata
+cat /tmp/backups/john_20240115_151000/metadata.txt
+
+# Output:
+User Deletion Backup
+====================
+Username: john
+UID: 1005
+GID: 1005
+Groups: john developers docker
+Home: /home/john
+Shell: /bin/bash
+Backup Date: Mon Jan 15 15:10:00 UTC 2024
+Deleted By: ec2-user
+
+10.4: Batch Deletion from JSON
+# Create deletion JSON
+cat > /tmp/cleanup.json << 'EOF'
+{
+  "options": {
+    "backup_dir": "/tmp/deletion_backups",
+    "default_backup": true,
+    "retention_days": 90
+  },
+  "deletions": [
+    {
+      "username": "jane",
+      "backup": true,
+      "delete_home": true,
+      "reason": "Employee departure - last day completed"
+    }
+  ]
+}
 EOF
 
-cat ~/phase1_quick_reference.txt
-```
+# Execute batch deletion
+sudo ./user.sh --delete user --input /tmp/cleanup.json --format json
 
----
+# Output (JSON):
+{
+  "operation": "batch_delete_users",
+  "timestamp": "2024-01-15 15:15:00",
+  "source_file": "/tmp/cleanup.json",
+  "results": [
+    {
+      "username": "jane",
+      "status": "success",
+      "uid": 1006,
+      "backup": "/tmp/deletion_backups/jane_20240115_151500"
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "success": 1,
+    "failed": 0
+  }
+}
 
-## ✅ Verification Checklist
+Demo 11: Recent Login Tracking
+11.1: View Recent Logins (24 hours)
+sudo ./user.sh --view recent-logins
 
-Before moving to Phase 2, verify:
+# Output:
+==========================================
+Recent Logins
+Period: Last 24 hours
+Generated: 2024-01-15 15:20:00
+==========================================
 
-- [ ] All test pass (26/26)
-- [ ] Users can be created (text and JSON)
-- [ ] Random passwords generate correctly
-- [ ] Lock/unlock works
-- [ ] Groups can be created
-- [ ] Reports generate without errors
-- [ ] Export works (CSV, JSON, TSV)
-- [ ] JSON input/output works
-- [ ] Dry-run mode doesn't make changes
-- [ ] Logs are being written
-- [ ] Backups are created
-- [ ] Config validation catches errors
-- [ ] Unicode/ASCII mode works
-- [ ] Help system is comprehensive
+USERNAME        TIME                 FROM                 DURATION
+------------------------------------------------------------------------
+ec2-user        2024-01-15 09:30    203.0.113.45         Active (5h 50m)
+ec2-user        2024-01-15 14:15    203.0.113.45         Logged out (1:05)
+------------------------------------------------------------------------
+Total logins: 2
 
----
+11.2: View Logins for Specific User
+# Check alice's login history (30 days)
+sudo ./user.sh --view recent-logins --user alice --days 30
 
-## 🎉 Success Criteria
+# Output:
+==========================================
+Recent Logins: alice
+Period: Last 30 days
+Generated: 2024-01-15 15:21:00
+==========================================
 
-**Phase 1 is successfully deployed if:**
+USERNAME        TIME                 FROM                 DURATION
+------------------------------------------------------------------------
+No logins found in the specified period
+------------------------------------------------------------------------
 
-✅ Test suite shows 100% pass rate  
-✅ You can create/delete users  
-✅ Reports generate correctly  
-✅ JSON operations work  
-✅ Logs are being recorded  
-✅ Backups are being created  
-✅ Security features work (lock, password expiry)  
+11.3: JSON Output for Logins
+# Get login data in JSON format for processing
+sudo ./user.sh --view recent-logins --days 7 --json
 
----
+# Output:
+[
+  {
+    "username": "ec2-user",
+    "tty": "pts/0",
+    "from": "203.0.113.45",
+    "login_time": "Mon Jan 15 09:30:00 2024",
+    "status": "active",
+    "duration_seconds": 21000
+  },
+  {
+    "username": "ec2-user",
+    "tty": "pts/1",
+    "from": "203.0.113.45",
+    "login_time": "Mon Jan 15 14:15:00 2024",
+    "status": "logged_out",
+    "duration_seconds": 3900
+  }
+]
 
-## 📞 Troubleshooting
 
-### Issue: "Permission denied"
-```bash
-# Make scripts executable
-sudo chmod +x /opt/admin_dashboard/scripts/user.sh
-sudo chmod +x /opt/admin_dashboard/scripts/lib/*.sh
-```
+7. Real-World Scenarios {#scenarios}
+Scenario 1: New Project Team Onboarding
+Situation: New project starting, need to onboard 5 team members with different roles.
+Step 1: Create groups.json
+cat > /tmp/project_alpha_groups.json << 'EOF'
+{
+  "groups": [
+    {
+      "name": "project_alpha_dev",
+      "action": "create",
+      "members": []
+    },
+    {
+      "name": "project_alpha_qa",
+      "action": "create",
+      "members": []
+    },
+    {
+      "name": "project_alpha_deploy",
+      "action": "create",
+      "members": []
+    }
+  ]
+}
+EOF
 
-### Issue: "Config file not found"
-```bash
-# Check config exists
-ls -l /opt/admin_dashboard/config/user_mgmt.conf
+sudo ./user.sh --manage-groups /tmp/project_alpha_groups.json
 
-# If missing, copy it
-sudo cp config/user_mgmt.conf /opt/admin_dashboard/config/
-```
+Step 2: Create roles.json
+cat > /tmp/project_alpha_roles.json << 'EOF'
+{
+  "roles": {
+    "project_lead": {
+      "groups": ["project_alpha_dev", "project_alpha_deploy", "sudo"],
+      "shell": "/bin/bash",
+      "password_expiry_days": 30,
+      "description": "Project lead with full access"
+    },
+    "developer": {
+      "groups": ["project_alpha_dev"],
+      "shell": "/bin/bash",
+      "password_expiry_days": 60,
+      "description": "Developer with code access"
+    },
+    "qa_engineer": {
+      "groups": ["project_alpha_qa"],
+      "shell": "/bin/bash",
+      "password_expiry_days": 60,
+      "description": "QA engineer with test access"
+    }
+  },
+  "assignments": [
+    {"username": "sarah_lead", "role": "project_lead"},
+    {"username": "mike_dev", "role": "developer"},
+    {"username": "lisa_dev", "role": "developer"},
+    {"username": "tom_qa", "role": "qa_engineer"},
+    {"username": "emma_qa", "role": "qa_engineer"}
+  ]
+}
+EOF
 
-### Issue: "jq: command not found"
-```bash
+sudo ./user.sh --apply-roles /tmp/project_alpha_roles.json
+
+Step 3: Verify Team Setup
+# View all project members
+sudo ./user.sh --search users --pattern "project"
+
+# View project groups
+sudo ./user.sh --view group --name project_alpha_dev
+
+# Export team roster
+sudo ./user.sh --export users --output /tmp/project_alpha_roster.csv --format csv
+
+Result: Complete team onboarded in under 5 minutes with proper permissions and security settings.
+Scenario 2: Security Incident Response
+Situation: Suspicious activity detected on user "bob" account at 2 AM.
+Step 1: Immediate Lock
+# Lock account immediately
+sudo ./user.sh --lock user --name bob --reason "Security incident - unusual login from unknown IP at 02:00 UTC"
+
+# Output confirms lock:
+🔒 Locking user: bob
+   Reason: Security incident - unusual login from unknown IP at 02:00 UTC
+   ✓ User locked successfully
+
+Step 2: Gather Information
+# Get detailed user info
+sudo ./user.sh --view user --name bob
+
+# Check recent activity
+sudo ./user.sh --view recent-logins --user bob --days 7
+
+# Check for active processes
+ps -u bob
+
+# Check for cron jobs
+sudo crontab -l -u bob
+
+Step 3: Pre-Deletion Assessment
+# Run security check
+sudo ./user.sh --delete user --name bob --check
+
+# Review findings and decide on action
+
+Step 4: Secure Deletion with Backup
+# Delete with full backup for forensics
+sudo ./user.sh --delete user --name bob --backup --backup-dir /var/security/incidents --force-logout --kill-processes
+
+# Backup is preserved for security review
+ls -la /var/security/incidents/bob_*
+
+Step 5: Audit Trail
+# Review all actions taken
+grep "bob" /var/log/user_mgmt.log
+
+# Generate security report
+sudo ./user.sh --report security > /tmp/security_audit_$(date +%Y%m%d).txt
+
+Result: Compromised account handled within minutes, full audit trail maintained, data preserved for investigation.
+Scenario 3: Contractor Offboarding
+Situation: 3-month contractor period ending, need to cleanly remove 4 contractor accounts.
+Step 1: Lock Accounts First
+# Lock all contractors (prevent login while reviewing)
+for user in contractor1 contractor2 contractor3 contractor4; do
+    sudo ./user.sh --lock user --name $user --reason "Contract period ended - $(date +%Y-%m-%d)"
+done
+
+Step 2: Wait Period (24-48 hours)
+# Verify no active processes
+for user in contractor1 contractor2 contractor3 contractor4; do
+    echo "Checking $user:"
+    ps -u $user 2>/dev/null || echo "  No processes"
+    sudo crontab -l -u $user 2>/dev/null || echo "  No cron jobs"
+done
+
+Step 3: Create Batch Deletion JSON
+cat > /tmp/contractor_offboard.json << 'EOF'
+{
+  "options": {
+    "backup_dir": "/var/backups/contractors",
+    "default_backup": true,
+    "retention_days": 180
+  },
+  "deletions": [
+    {
+      "username": "contractor1",
+      "backup": true,
+      "delete_home": true,
+      "reason": "3-month contract completed - deliverables accepted"
+    },
+    {
+      "username": "contractor2",
+      "backup": true,
+      "delete_home": true,
+      "reason": "3-month contract completed - deliverables accepted"
+    },
+    {
+      "username": "contractor3",
+      "backup": true,
+      "delete_home": false,
+      "reason": "3-month contract completed - code review pending"
+    },
+    {
+      "username": "contractor4",
+      "backup": true,
+      "delete_home": true,
+      "reason": "3-month contract completed - deliverables accepted"
+    }
+  ]
+}
+EOF
+
+Step 4: Execute Batch Deletion
+# Run batch deletion
+sudo ./user.sh --delete user --input /tmp/contractor_offboard.json --format json > /tmp/offboard_results.json
+
+# Review results
+cat /tmp/offboard_results.json | jq .
+
+Step 5: Verify and Document
+# Verify users deleted
+for user in contractor1 contractor2 contractor3 contractor4; do
+    id $user 2>/dev/null || echo "$user: Successfully removed"
+done
+
+# Verify backups created
+ls -la /var/backups/contractors/
+
+# Generate final report
+sudo ./user.sh --view summary > /tmp/post_offboard_summary.txt
+
+Result: Clean, auditable contractor offboarding with backups preserved for required retention period.
+Scenario 4: Compliance Audit Preparation
+Situation: Annual security audit next week, need comprehensive documentation.
+Step 1: Generate All Reports
+# Create audit directory
+mkdir -p /tmp/audit_2024
+
+# Security audit
+sudo ./user.sh --report security > /tmp/audit_2024/security_audit.txt
+
+# Compliance report
+sudo ./user.sh --report compliance > /tmp/audit_2024/compliance_report.txt
+
+# Activity report (1 year)
+sudo ./user.sh --report activity --days 365 > /tmp/audit_2024/activity_report.txt
+
+# Storage report
+sudo ./user.sh --report storage > /tmp/audit_2024/storage_report.txt
+
+Step 2: Export System State
+# Complete system export (JSON for easy parsing)
+sudo ./user.sh --export all --output /tmp/audit_2024/system_state.json --format json
+
+# User list (CSV for spreadsheet)
+sudo ./user.sh --export users --output /tmp/audit_2024/all_users.csv --format csv
+
+# Group list
+sudo ./user.sh --export groups --output /tmp/audit_2024/all_groups.csv --format csv
+
+Step 3: Specific Queries
+# Find all sudo users
+sudo ./user.sh --search users --status sudo --json > /tmp/audit_2024/sudo_users.json
+
+# Find all locked accounts
+sudo ./user.sh --view users --filter locked > /tmp/audit_2024/locked_accounts.txt
+
+# Find accounts without password expiry
+sudo ./user.sh --report compliance | grep "No password expiry" -A 20 > /tmp/audit_2024/no_expiry.txt
+
+Step 4: Create Audit Package
+# Compress all reports
+cd /tmp
+tar -czf audit_package_$(date +%Y%m%d).tar.gz audit_2024/
+
+# List contents
+tar -tzf audit_package_$(date +%Y%m%d).tar.gz
+
+# File is ready to submit
+ls -lh audit_package_*.tar.gz
+
+Result: Complete audit package ready in under 10 minutes, all required documentation included.
+
+8. Troubleshooting {#troubleshooting}
+Issue 1: Permission Denied
+Error:
+✗ This script must be run as root (use sudo)
+
+Solution:
+# Always use sudo
+sudo ./user.sh --view users
+
+# OR add to sudoers for frequent use
+sudo visudo
+# Add line:
+your_username ALL=(ALL) NOPASSWD: /opt/admin_dashboard/scripts/user.sh
+
+Issue 2: jq Not Found
+Error:
+✗ jq is required for JSON operations
+
+Solution:
 # Amazon Linux
 sudo yum install -y jq
 
 # Ubuntu
-sudo apt-get update && sudo apt-get install -y jq
-```
+sudo apt install -y jq
 
-### Issue: Unicode characters don't display
-```bash
-# Edit config
+# Verify
+jq --version
+
+Issue 3: Config Validation Errors
+Error:
+✗ Config Error: PASSWORD_EXPIRY_DAYS must be numeric (current: abc)
+
+Solution:
+# Edit config file
 sudo nano /opt/admin_dashboard/config/user_mgmt.conf
 
-# Change to:
+# Fix the invalid value
+PASSWORD_EXPIRY_DAYS=90  # Must be a number
+
+# Test
+sudo ./user.sh --version
+
+Issue 4: User Already Exists
+Error:
+⚠️  User 'alice' already exists. Skipping...
+
+Solution:
+# Check if user exists
+id alice
+
+# If intentional, skip is correct behavior
+# If need to recreate, delete first:
+sudo ./user.sh --delete user --name alice --check
+sudo ./user.sh --delete user --name alice
+
+Issue 5: Group Doesn't Exist
+Error:
+✗ Group 'developers' does not exist
+
+Solution:
+# Create the group first
+echo "developers" > /tmp/group.txt
+sudo ./user.sh --add group --names /tmp/group.txt
+
+# Then add user to group
+sudo ./user.sh --update user --name alice --add-to-groups developers
+
+Issue 6: Cannot Delete System Group
+Error:
+🛑 BLOCKED: Cannot delete system group (GID < 1000)
+
+Solution:
+# This is intentional protection
+# System groups (GID < 1000) cannot be deleted
+# Only user-created groups (GID >= 1000) can be deleted
+
+# To verify GID:
+getent group groupname
+
+Issue 7: Log File Not Writable
+Error:
+Warning: Cannot write to /var/log/user_mgmt.log
+
+Solution:
+# Fix permissions
+sudo touch /var/log/user_mgmt.log
+sudo chmod 640 /var/log/user_mgmt.log
+sudo chown root:root /var/log/user_mgmt.log
+
+Issue 8: Backup Directory Missing
+Warning:
+⚠️  Config Warning: BACKUP_DIR doesn't exist (will be created)
+
+Solution:
+# Create backup directory
+sudo mkdir -p /var/backups/users/passwords
+sudo chmod 700 /var/backups/users
+sudo chmod 700 /var/backups/users/passwords
+
+# Verify
+ls -la /var/backups/
+
+Issue 9: Unicode Characters Not Displaying
+Issue:
+# Instead of ✓ you see: ?
+# Instead of ⚠️ you see: ??
+
+Solution:
+# Edit config to use ASCII mode
+sudo nano /opt/admin_dashboard/config/user_mgmt.conf
+
+# Change:
 USE_UNICODE="no"
-```
 
-### Issue: Tests fail
-```bash
-# Check logs
-sudo cat /tmp/phase1_test_*.log
-sudo tail -100 /var/log/user_mgmt.log
+# Save and test
+sudo ./user.sh --view summary
 
-# Run individual test
+# Now you'll see [OK] instead of ✓
+
+Issue 10: Test Suite Failures
+Error:
+✗ FAIL: Add user from text file
+  Error: Command failed
+
+Solution:
+# Check test log for details
+cat /tmp/phase1_test_*.log
+
+# Common causes:
+# 1. Missing dependencies
+sudo yum install -y jq
+
+# 2. Permission issues
+sudo chmod +x /opt/admin_dashboard/scripts/user.sh
+sudo chmod +x /opt/admin_dashboard/scripts/lib/*.sh
+
+# 3. Config errors
+sudo ./user.sh --view summary  # Check for config warnings
+
+# Re-run specific test
 sudo ./test_phase1.sh add-user
-```
 
----
 
-## 🚀 Next Steps
+9. Performance Benchmarks
+Operations Per Minute (t3.micro)
+# Benchmark: Add 100 users
+time for i in {1..100}; do
+    echo "testuser$i:Test User $i" >> /tmp/bulk_users.txt
+done
+time sudo ./user.sh --add user --names /tmp/bulk_users.txt
 
-**Phase 1 Complete!** ✅
+# Result: ~30 seconds (200 users/minute)
 
-You now have:
-- ✅ Production-ready user management system
-- ✅ Comprehensive feature set
-- ✅ Full audit trail
-- ✅ JSON automation
-- ✅ Safety features
+# Benchmark: View operations
+time sudo ./user.sh --view users
+# Result: <1 second
 
-**Ready for Phase 2:**
-- Build Admin Server
-- Manage multiple EC2 instances
-- Remote user management
-- Centralized control
+# Benchmark: Search operations
+time sudo ./user.sh --search users --pattern "test"
+# Result: <1 second
 
----
+# Benchmark: Report generation
+time sudo ./user.sh --report security
+# Result: 2-3 seconds
 
-## 📚 Additional Resources
+# Benchmark: Export operations
+time sudo ./user.sh --export all --output /tmp/export.json --format json
+# Result: 3-4 seconds for 100 users
 
-**On EC2:**
-- Main script: `/opt/admin_dashboard/scripts/user.sh`
-- Config: `/opt/admin_dashboard/config/user_mgmt.conf`
-- Logs: `/var/log/user_mgmt.log`
-- Backups: `/var/backups/users/`
-- Examples: `/opt/admin_dashboard/scripts/examples/`
 
-**Help Commands:**
-```bash
-sudo ./user.sh --help              # General help
-sudo ./user.sh --help add          # Add command help
-sudo ./user.sh --help delete       # Delete command help
-sudo ./user.sh --help report       # Report help
-cat examples/README.md             # JSON examples guide
-```
+10. Cleanup & Next Steps
+Complete Cleanup
+# Remove all test users created
+for user in alice bob charlie diana john jane sarah_lead mike_dev lisa_dev tom_qa emma_qa; do
+    if id "$user" &>/dev/null; then
+        sudo userdel -r "$user" 2>/dev/null
+        echo "Removed: $user"
+    fi
+done
 
----
+# Remove test groups
+for group in developers testers devops managers contractors project_alpha_dev project_alpha_qa project_alpha_deploy; do
+    if getent group "$group" &>/dev/null; then
+        sudo groupdel "$group" 2>/dev/null
+        echo "Removed group: $group"
+    fi
+done
 
-**Deployment Time:** ~30 minutes  
-**Test Time:** ~5 minutes  
-**Demo Time:** ~10 minutes  
-**Total:** ~45 minutes from zero to full demo
+# Clean temp files
+rm -f /tmp/*.txt /tmp/*.json /tmp/*.csv
+rm -rf /tmp/audit_2024 /tmp/backups
 
-**Status:** PRODUCTION READY ✅
+# View final state
+sudo ./user.sh --view summary
+
+Save Configuration
+# Backup your customized config
+sudo cp /opt/admin_dashboard/config/user_mgmt.conf ~/user_mgmt.conf.backup
+
+# Export system state before Phase 2
+sudo ./user.sh --export all --output ~/phase1_final_state.json --format json
+
+Documentation
+# Save all logs
+sudo cp /var/log/user_mgmt.log ~/phase1_execution.log
+
+# Create summary document
+cat > ~/phase1_summary.txt << 'EOF'
+Phase 1 - Deployment Complete
+=============================
+
+Date: $(date)
+Instance: $(hostname)
+Version: 1.0.1
+
+Tests Passed: 26/26 (100%)
+Users Created: 6
+Groups Created: 5
+Reports Generated: 4
+Exports Performed: 3
+
+System is ready for Phase 2 deployment.
+EOF
+
+
+
+

@@ -40,7 +40,7 @@ is_system_user() {
 #   "ACTIVE" if account is active
 get_user_status() {
     local username="$1"
-    if passwd -S "$username" 2>/dev/null | grep -q " L "; then
+    if passwd -S "$username" 2>/dev/null | grep -q " LK "; then
         echo "LOCKED"
     else
         echo "ACTIVE"

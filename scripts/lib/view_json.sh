@@ -14,7 +14,7 @@ view_all_users_json() {
         is_regular_user "$uid" || continue
         
         local status="active"
-        passwd -S "$username" 2>/dev/null | grep -q " L " && status="locked"
+        passwd -S "$username" 2>/dev/null | grep -q " LK " && status="locked"
         
         local primary_group=$(id -gn "$username" 2>/dev/null)
         local groups_list=$(groups "$username" 2>/dev/null | cut -d: -f2- | xargs)
@@ -119,7 +119,7 @@ view_user_details_json() {
     local gecos=$(getent passwd "$username" | cut -d: -f5)
     
     local status="active"
-    passwd -S "$username" 2>/dev/null | grep -q " L " && status="locked"
+    passwd -S "$username" 2>/dev/null | grep -q " LK " && status="locked"
     
     local groups_list=$(groups "$username" 2>/dev/null | cut -d: -f2- | xargs)
     local groups_array=$(echo "$groups_list" | tr ' ' '\n' | while read g; do echo "\"$g\""; done | paste -sd,)

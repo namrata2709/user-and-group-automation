@@ -19,7 +19,7 @@ report_security_json() {
     
     while IFS=: read -r username _ uid _; do
         is_regular_user "$uid" || continue
-        if passwd -S "$username" 2>/dev/null | grep -q " L "; then
+        if passwd -S "$username" 2>/dev/null | grep -q " LK "; then
             locked_users+=("\"$username\"")
         fi
     done < /etc/passwd

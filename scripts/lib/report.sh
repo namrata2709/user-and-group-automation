@@ -32,7 +32,7 @@ report_security() {
     local locked_count=0
     while IFS=: read -r username _ uid _; do
         is_regular_user "$uid" || continue
-        if passwd -S "$username" 2>/dev/null | grep -q " L "; then
+        if passwd -S "$username" 2>/dev/null | grep -q " LK "; then
             local groups=$(groups "$username" 2>/dev/null | cut -d: -f2-)
             echo "  ${ICON_LOCK} $username (UID: $uid)"
             echo "      Groups: $groups"

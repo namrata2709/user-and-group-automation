@@ -33,7 +33,7 @@ delete_check_user() {
     echo "  Home:            $home"
     echo "  Shell:           $shell"
     
-    if passwd -S "$username" 2>/dev/null | grep -q " L "; then
+    if passwd -S "$username" 2>/dev/null | grep -q " LK "; then
         echo "  Status:          LOCKED ${ICON_LOCK}"
     else
         echo "  Status:          ACTIVE"

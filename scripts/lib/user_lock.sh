@@ -13,7 +13,7 @@ lock_user() {
         return 1
     fi
     
-    if passwd -S "$username" 2>/dev/null | grep -q " L "; then
+    if passwd -S "$username" 2>/dev/null | grep -q " LK "; then
         echo "${ICON_WARNING} User '$username' is already locked"
         return 0
     fi
@@ -46,7 +46,7 @@ unlock_user() {
         return 1
     fi
     
-    if ! passwd -S "$username" 2>/dev/null | grep -q " L "; then
+    if ! passwd -S "$username" 2>/dev/null | grep -q " LK "; then
         echo "${ICON_WARNING} User '$username' is not locked"
         return 0
     fi

@@ -7,7 +7,7 @@
 # Usage: sudo ./test_phase1.sh [test_name|all|--help]
 # ================================================
 
-set -euo pipefail
+
 
 # Show help first if requested
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
@@ -415,7 +415,7 @@ test_add_user_random() {
     
     if sudo "$USER_SCRIPT" --add user --names "$file" &>/dev/null; then
         if id "$user" &>/dev/null; then
-            local pwd_files=$(sudo find /var/backups/passwords -name "${user}_*.txt" 2>/dev/null | wc -l)
+            local pwd_files=$(sudo find /var/backups/users/passwords -name "${user}_*.txt" 2>/dev/null | wc -l)
             if [ "$pwd_files" -gt 0 ]; then
                 print_pass "Random password generated and saved"
                 log "Random password: $user"
@@ -838,10 +838,10 @@ test_lock_unlock() {
     
     # Lock user
     if sudo "$USER_SCRIPT" --lock user --name "$user" &>/dev/null; then
-        if passwd -S "$user" 2>/dev/null | grep -q " L "; then
+        if passwd -S "$user" 2>/dev/null | grep -q " LK "; then
             # Unlock user
             if sudo "$USER_SCRIPT" --unlock user --name "$user" &>/dev/null; then
-                if ! passwd -S "$user" 2>/dev/null | grep -q " L "; then
+                if ! passwd -S "$user" 2>/dev/null | grep -q " LK "; then
                     print_pass "Lock and unlock work"
                     log "Lock/unlock: $user"
                 else

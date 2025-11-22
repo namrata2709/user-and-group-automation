@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 # ================================================
 # EC2 User Management Script - Main Entry Point
-# Version: 1.0.1
-# Build Date: 2024-01-15
+# Version: 2.0.0
+# Build Date: 2024-01-22
 # ================================================
-# Modular architecture - loads functions from lib/
+# UPDATED: Refactored to use single-logic functions
 # ================================================
-
 
 # ============ VERSION INFO ==================
-VERSION="1.0.1"
-BUILD_DATE="2024-01-15"
+VERSION="2.0.0"
+BUILD_DATE="2024-01-22"
 
 # ============ PATHS ==================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,7 +38,6 @@ else
 fi
 
 # ============ DISPLAY ICONS ==================
-# Set icons based on USE_UNICODE config
 if [ "${USE_UNICODE}" = "yes" ]; then
     ICON_SUCCESS="✓"
     ICON_ERROR="✗"
@@ -66,7 +64,6 @@ else
     ICON_SEARCH="[?]"
 fi
 
-# Export icons for use in modules
 export ICON_SUCCESS ICON_ERROR ICON_WARNING ICON_INFO ICON_USER ICON_GROUP
 export ICON_LOCK ICON_UNLOCK ICON_DELETE ICON_BACKUP ICON_SEARCH
 
@@ -111,13 +108,11 @@ KEEP_HOME=false
 
 # ============ INITIALIZATION ==================
 init_script() {
-    # Check if running as root
     if [ "$EUID" -ne 0 ]; then
         echo "${ICON_ERROR} This script must be run as root (use sudo)"
         exit 1
     fi
     
-    # Check for another instance running
     if pidof -x "$(basename "$0")" -o $$ >/dev/null 2>&1; then
         echo "${ICON_WARNING} Another instance is already running"
         read -p "Continue anyway? [y/N]: " response
@@ -126,7 +121,6 @@ init_script() {
         fi
     fi
     
-    # Check jq dependency for JSON operations
     if [ "$JSON_INPUT" = true ] || [ "$JSON_OUTPUT" = true ] || [ "$OPERATION" = "--apply-roles" ] || [ "$OPERATION" = "--manage-groups" ]; then
         if ! command -v jq &> /dev/null; then
             echo "${ICON_ERROR} jq is required for JSON operations"
@@ -137,12 +131,10 @@ init_script() {
         fi
     fi
     
-    # Validate configuration
     if ! validate_config; then
         exit 1
     fi
     
-    # Create log file if it doesn't exist
     if [ ! -f "$LOG_FILE" ]; then
         local log_dir=$(dirname "$LOG_FILE")
         if [ ! -d "$log_dir" ]; then
@@ -152,13 +144,11 @@ init_script() {
         chmod 640 "$LOG_FILE" 2>/dev/null || true
     fi
     
-    # Create backup directory if it doesn't exist
     if [ ! -d "$BACKUP_DIR" ]; then
         mkdir -p "$BACKUP_DIR" 2>/dev/null || true
         chmod 700 "$BACKUP_DIR" 2>/dev/null || true
     fi
     
-    # Log script start
     log_info "Script started: user.sh v$VERSION"
 }
 
@@ -195,9 +185,19 @@ parse_arguments() {
                 exit 0
                 ;;
                 
-            --add|--delete|--lock|--unlock|--update|--view|--search|--report|--export|--apply-roles|--manage-groups)
+            --add|--delete|--lock|--unlock|--update|--view|--search|--report|--export)
                 OPERATION="$1"
                 shift
+                ;;
+            
+            --apply-roles|--manage-groups)
+                OPERATION="$1"
+                # Capture the filename as next argument if not --input
+                shift
+                if [ $# -gt 0 ] && [[ ! "$1" =~ ^-- ]]; then
+                    FILE="$1"
+                    shift
+                fi
                 ;;
                 
             user|group|user-group|users|groups|user-groups|summary|security|compliance|activity|storage|recent-logins|all)
@@ -469,17 +469,16 @@ execute_operation() {
             [ -z "$FILE" ] && { echo "${ICON_ERROR} Missing --names <file> or --input <file>"; exit 1; }
             case "$ACTION" in
                 user)
-                    if [ "$JSON_INPUT" = true ]; then
-                        add_users_from_json "$FILE"
-                    else
-                        add_users "$FILE"
-                    fi
+                    # UPDATED: Use refactored add_users with format detection
+                    add_users "$FILE" "$INPUT_FORMAT"
                     ;;
                 group) 
-                    add_groups "$FILE" 
+                    # UPDATED: Use refactored add_groups with format detection
+                    add_groups "$FILE" "$INPUT_FORMAT"
                     ;;
                 user-group) 
-                    add_users_to_groups "$FILE" 
+                    # UPDATED: Uses refactored add_users_to_groups
+                    add_users_to_groups "$FILE"
                     ;;
                 *) 
                     echo "${ICON_ERROR} Invalid action: $ACTION"
@@ -653,12 +652,12 @@ execute_operation() {
             ;;
             
         --apply-roles)
-            [ -z "$FILE" ] && { echo "${ICON_ERROR} Missing role file (use --input <file> or <file> as argument)"; exit 1; }
+            [ -z "$FILE" ] && { echo "${ICON_ERROR} Missing role file (usage: --apply-roles <file>)"; exit 1; }
             apply_roles_from_json "$FILE"
             ;;
             
         --manage-groups)
-            [ -z "$FILE" ] && { echo "${ICON_ERROR} Missing groups file (use --input <file> or <file> as argument)"; exit 1; }
+            [ -z "$FILE" ] && { echo "${ICON_ERROR} Missing groups file (usage: --manage-groups <file>)"; exit 1; }
             manage_groups_from_json "$FILE"
             ;;
             
@@ -682,7 +681,6 @@ execute_operation() {
 
 # ============ MAIN ==================
 main() {
-    # Show help if requested or no arguments
     if [ $# -eq 0 ] || [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
         if [ $# -ge 2 ]; then
             show_specific_help "$2"
@@ -692,32 +690,23 @@ main() {
         exit 0
     fi
     
-    # Show version if requested
     if [ "$1" = "--version" ] || [ "$1" = "-v" ]; then
         echo "EC2 User Management System v$VERSION"
         echo "Build: $BUILD_DATE"
         exit 0
     fi
     
-    # Parse arguments first (to check for JSON operations)
     parse_arguments "$@"
-    
-    # Initialize script (includes dependency checks)
     init_script
-    
-    # Execute the operation
     execute_operation
     
-    # Show completion message
     if [ "$DRY_RUN" = false ] && [ "$DELETE_MODE" != "check" ] && [ "$JSON_OUTPUT" = false ]; then
         echo ""
         echo "${ICON_SUCCESS} Operation completed successfully"
         echo "${ICON_INFO} Log file: $LOG_FILE"
     fi
     
-    # Log script end
     log_info "Script completed: user.sh v$VERSION"
 }
 
-# Run main function
 main "$@"

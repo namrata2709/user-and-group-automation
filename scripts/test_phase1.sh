@@ -588,7 +588,7 @@ test_add_group_json() {
 }
 EOF
     
-    if sudo "$USER_SCRIPT" --manage-groups "$file" &>/dev/null; then
+    if sudo "$USER_SCRIPT" --add groups "$file" &>/dev/null; then
         if getent group "$group" &>/dev/null; then
             print_pass "Group created from JSON"
             log "JSON group: $group"
@@ -1703,4 +1703,4 @@ main() {
 }
 
 # Run main
-main
+main "$@"

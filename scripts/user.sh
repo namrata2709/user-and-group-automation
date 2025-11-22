@@ -200,7 +200,7 @@ parse_arguments() {
                 fi
                 ;;
                 
-            user|group|user-group|users|groups|user-groups|summary|security|compliance|activity|storage|recent-logins|all)
+            user|group|user-group|user-provision|users|groups|user-groups|summary|security|compliance|activity|storage|recent-logins|all)
                 if [ "$OPERATION" = "--report" ]; then
                     REPORT_TYPE="$1"
                 elif [ "$OPERATION" = "--export" ]; then

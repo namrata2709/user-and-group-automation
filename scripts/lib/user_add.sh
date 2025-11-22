@@ -380,19 +380,23 @@ add_users_from_json() {
 }
 
 # ============================================
-# USER-GROUP MAPPING - REFACTORED
+# USER-GROUP PROVISIONING - REFACTORED
 # ============================================
 # Uses add_single_group() and add_single_user() core functions
+# Supports all add_user arguments for new users
 # ============================================
 
-# parse_user_group_mapping()
+# provision_users_and_groups()
 # Parses user-group mapping file and creates users/groups as needed
 # Format: groupname:user1 user2 user3
 # Args:
 #   $1 - mapping file path
 # Returns:
 #   Summary counts
-parse_user_group_mapping() {
+# Notes:
+#   - Uses GLOBAL_* variables for new user defaults (expire, shell, sudo, password, etc.)
+#   - Existing users are just added to groups
+provision_users_and_groups() {
     local mapping_file="$1"
     
     if [[ ! -f "$mapping_file" ]]; then
@@ -460,16 +464,26 @@ parse_user_group_mapping() {
                     echo "  ${ICON_USER} Adding '$user' to '$group'"
                     if sudo usermod -aG "$group" "$user" 2>/dev/null; then
                         ((users_added++))
-                        log_action "add_user_to_group" "$user" "SUCCESS" "Added to group: $group"
+                        log_action "provision_add_to_group" "$user" "SUCCESS" "Added to group: $group"
                     else
                         echo "  ${ICON_ERROR} Failed to add '$user' to '$group'"
                         ((failed++))
                     fi
                 fi
             else
-                # User doesn't exist, create and add - USE CORE FUNCTION
-                echo "  ${ICON_INFO} User '$user' doesn't exist, creating..."
-                if add_single_user "$user" "" "0" "$DEFAULT_SHELL" "no" "$DEFAULT_PASSWORD" "${PASSWORD_EXPIRY_DAYS:-90}" "$group"; then
+                # User doesn't exist, create with GLOBAL settings
+                echo "  ${ICON_INFO} User '$user' doesn't exist, creating with defaults..."
+                
+                # Use GLOBAL variables if set, otherwise use defaults
+                local user_shell="${GLOBAL_SHELL:-$DEFAULT_SHELL}"
+                local user_expiry="${GLOBAL_EXPIRE:-0}"
+                local user_sudo="no"
+                [ "$GLOBAL_SUDO" = true ] && user_sudo="yes"
+                local user_password="${GLOBAL_PASSWORD:-$DEFAULT_PASSWORD}"
+                local user_pwd_expiry="${GLOBAL_PASSWORD_EXPIRY:-${PASSWORD_EXPIRY_DAYS:-90}}"
+                
+                # Create user with primary group + additional group from mapping
+                if add_single_user "$user" "" "$user_expiry" "$user_shell" "$user_sudo" "$user_password" "$user_pwd_expiry" "$group"; then
                     ((users_created++))
                     ((users_added++))
                 else
@@ -495,14 +509,26 @@ parse_user_group_mapping() {
 # ============================================
 # PUBLIC INTERFACE
 # ============================================
-add_users_to_groups() {
+# NEW NAME: provision_users_with_groups (better describes what it does)
+# OLD NAME: add_users_to_groups (kept for backward compatibility)
+provision_users_with_groups() {
     local mapping_file="$1"
     
     echo "=========================================="
-    echo "User-Group Mapping from: $mapping_file"
+    echo "User-Group Provisioning from: $mapping_file"
     [ "$DRY_RUN" = true ] && echo "${ICON_SEARCH} DRY-RUN MODE"
+    [ -n "$GLOBAL_EXPIRE" ] && echo "📅 New users expire in: $GLOBAL_EXPIRE days"
+    [ -n "$GLOBAL_SHELL" ] && echo "🐚 New users shell: $GLOBAL_SHELL"
+    [ "$GLOBAL_SUDO" = true ] && echo "🔐 New users sudo: enabled"
+    [ "$GLOBAL_PASSWORD" = "random" ] && echo "🔑 New users password: random"
+    [ -n "$GLOBAL_PASSWORD_EXPIRY" ] && echo "⏱️  Password expiry: $GLOBAL_PASSWORD_EXPIRY days"
     echo "=========================================="
     echo ""
     
-    parse_user_group_mapping "$mapping_file"
+    provision_users_and_groups "$mapping_file"
+}
+
+# Backward compatibility alias
+add_users_to_groups() {
+    provision_users_with_groups "$@"
 }

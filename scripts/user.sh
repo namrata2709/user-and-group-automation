@@ -476,9 +476,10 @@ execute_operation() {
                     # UPDATED: Use refactored add_groups with format detection
                     add_groups "$FILE" "$INPUT_FORMAT"
                     ;;
-                user-group) 
-                    # UPDATED: Uses refactored add_users_to_groups
-                    add_users_to_groups "$FILE"
+                user-group|user-provision) 
+                    # UPDATED: Uses refactored provision_users_with_groups
+                    # Supports GLOBAL_* variables for new user creation
+                    provision_users_with_groups "$FILE"
                     ;;
                 *) 
                     echo "${ICON_ERROR} Invalid action: $ACTION"
@@ -513,13 +514,29 @@ execute_operation() {
             ;;
             
         --lock)
-            [ -z "$USERNAME" ] && { echo "${ICON_ERROR} Missing --name <username>"; exit 1; }
-            lock_user "$USERNAME" "$LOCK_REASON"
+            if [ -n "$USERNAME" ]; then
+                # Single user lock
+                lock_single_user "$USERNAME" "$LOCK_REASON"
+            elif [ -n "$FILE" ]; then
+                # Bulk lock from file
+                lock_users "$FILE" "$INPUT_FORMAT" "$LOCK_REASON"
+            else
+                echo "${ICON_ERROR} Missing --name <username> or --names <file>"
+                exit 1
+            fi
             ;;
             
         --unlock)
-            [ -z "$USERNAME" ] && { echo "${ICON_ERROR} Missing --name <username>"; exit 1; }
-            unlock_user "$USERNAME"
+            if [ -n "$USERNAME" ]; then
+                # Single user unlock
+                unlock_single_user "$USERNAME"
+            elif [ -n "$FILE" ]; then
+                # Bulk unlock from file
+                unlock_users "$FILE" "$INPUT_FORMAT"
+            else
+                echo "${ICON_ERROR} Missing --name <username> or --names <file>"
+                exit 1
+            fi
             ;;
             
         --update)

@@ -8,7 +8,6 @@
 # ================================================
 
 
-
 # ============ VERSION INFO ==================
 VERSION="1.0.1"
 BUILD_DATE="2024-01-15"
@@ -330,24 +329,9 @@ parse_arguments() {
                 shift
                 ;;
                 
-            --expire)
-                GLOBAL_EXPIRE="$2"
-                shift 2
-                ;;
-                
-            --shell)
-                GLOBAL_SHELL="$2"
-                shift 2
-                ;;
-                
             --sudo)
                 GLOBAL_SUDO=true
                 shift
-                ;;
-                
-            --password-expiry)
-                GLOBAL_PASSWORD_EXPIRY="$2"
-                shift 2
                 ;;
                 
             --password)
@@ -396,13 +380,55 @@ parse_arguments() {
                 shift
                 ;;
                 
-            --reset-password|--add-to-group|--add-to-groups|--remove-from-group|--remove-from-groups|--comment|--primary-group|--add-member|--add-members|--remove-member|--remove-members|--shell|--expire|--password-expiry)
+            --reset-password|--add-to-group|--add-to-groups|--remove-from-group|--remove-from-groups|--comment|--primary-group|--add-member|--add-members|--remove-member|--remove-members)
                 UPDATE_OPERATION="${1#--}"
                 if [ $# -gt 1 ] && [[ ! "$2" =~ ^-- ]]; then
                     UPDATE_VALUE="$2"
                     shift
                 fi
                 shift
+                ;;
+                
+            --shell)
+                if [ "$OPERATION" = "--update" ]; then
+                    UPDATE_OPERATION="shell"
+                    if [ $# -gt 1 ] && [[ ! "$2" =~ ^-- ]]; then
+                        UPDATE_VALUE="$2"
+                        shift
+                    fi
+                    shift
+                else
+                    GLOBAL_SHELL="$2"
+                    shift 2
+                fi
+                ;;
+                
+            --expire)
+                if [ "$OPERATION" = "--update" ]; then
+                    UPDATE_OPERATION="expire"
+                    if [ $# -gt 1 ] && [[ ! "$2" =~ ^-- ]]; then
+                        UPDATE_VALUE="$2"
+                        shift
+                    fi
+                    shift
+                else
+                    GLOBAL_EXPIRE="$2"
+                    shift 2
+                fi
+                ;;
+                
+            --password-expiry)
+                if [ "$OPERATION" = "--update" ]; then
+                    UPDATE_OPERATION="password-expiry"
+                    if [ $# -gt 1 ] && [[ ! "$2" =~ ^-- ]]; then
+                        UPDATE_VALUE="$2"
+                        shift
+                    fi
+                    shift
+                else
+                    GLOBAL_PASSWORD_EXPIRY="$2"
+                    shift 2
+                fi
                 ;;
                 
             --help|-h)

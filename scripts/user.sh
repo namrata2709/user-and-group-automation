@@ -2,14 +2,15 @@
 # ================================================
 # EC2 User Management Script - Main Entry Point
 # Version: 2.0.0
-# Build Date: 2024-01-22
+# Build Date: 2024-01-15
 # ================================================
-# UPDATED: Refactored to use single-logic functions
+# Phase 1: Foundation - New argument parsing
+# Modular architecture - loads functions from lib/
 # ================================================
 
 # ============ VERSION INFO ==================
 VERSION="2.0.0"
-BUILD_DATE="2024-01-22"
+BUILD_DATE="2024-01-15"
 
 # ============ PATHS ==================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -76,8 +77,6 @@ source "$LIB_DIR/help.sh"
 source "$LIB_DIR/json.sh"
 source "$LIB_DIR/view.sh"
 source "$LIB_DIR/view_json.sh"
-source "$LIB_DIR/search.sh"
-source "$LIB_DIR/search_json.sh"
 source "$LIB_DIR/report.sh"
 source "$LIB_DIR/report_json.sh"
 source "$LIB_DIR/json_input.sh"
@@ -89,6 +88,12 @@ source "$LIB_DIR/group_add.sh"
 source "$LIB_DIR/group_delete.sh"
 source "$LIB_DIR/group_update.sh"
 source "$LIB_DIR/export.sh"
+
+# Load expression parser if exists (v2.0.0 feature)
+[ -f "$LIB_DIR/expression_parser.sh" ] && source "$LIB_DIR/expression_parser.sh"
+
+# Load validation rules if exists (v2.0.0 feature)
+[ -f "$LIB_DIR/validation_rules.sh" ] && source "$LIB_DIR/validation_rules.sh"
 
 # ============ GLOBAL VARIABLES ==================
 DRY_RUN=false
@@ -105,6 +110,30 @@ FORCE_LOGOUT=false
 KILL_PROCESSES=false
 BACKUP_ENABLED=false
 KEEP_HOME=false
+
+# ============ NEW VIEW PARAMETERS (v2.0.0) ==================
+VIEW_LIMIT=0           # 0 = unlimited
+VIEW_SKIP=0
+VIEW_SORT=""           # Default varies by view
+VIEW_COLUMNS=""        # Empty = all columns
+VIEW_COUNT_ONLY=false
+VIEW_EXCLUDE=""
+VIEW_TIME_PARAM=""     # For dynamic time filters (--days, --hours)
+VIEW_DETAILED=false    # For summary --detailed
+VIEW_REVERSE=false     # Sort order
+VIEW_SEARCH=""         # Pattern matching
+VIEW_IN_GROUP=""       # Filter users by group
+VIEW_HAS_MEMBER=""     # Filter groups by member
+VIEW_WHERE=""          # Custom WHERE expression
+VIEW_UID_RANGE=""      # UID range filter
+VIEW_GID_RANGE=""      # GID range filter
+VIEW_HOME_SIZE_RANGE="" # Home size range
+VIEW_MEMBER_COUNT_RANGE="" # Group member count range
+VIEW_GROUP_BY=""       # Aggregation grouping
+VIEW_AGGREGATE=""      # Aggregation functions
+VIEW_TREE_BY=""        # Hierarchical tree view
+VIEW_INCLUDE_RELATED=false # Include related data (joins)
+VIEW_VALIDATE=false    # Validation mode
 
 # ============ INITIALIZATION ==================
 init_script() {
@@ -161,10 +190,6 @@ GROUPNAME=""
 LOCK_REASON=""
 TRANSFER_GROUP=""
 VIEW_FILTER=""
-SEARCH_PATTERN=""
-SEARCH_STATUS=""
-SEARCH_GROUP=""
-SEARCH_MEMBER=""
 UPDATE_OPERATION=""
 UPDATE_VALUE=""
 REPORT_TYPE=""
@@ -172,9 +197,6 @@ REPORT_DAYS=30
 EXPORT_TYPE=""
 EXPORT_OUTPUT=""
 EXPORT_FORMAT="table"
-RECENT_HOURS=24
-RECENT_DAYS=""
-RECENT_USER=""
 
 parse_arguments() {
     while [ $# -gt 0 ]; do
@@ -185,22 +207,12 @@ parse_arguments() {
                 exit 0
                 ;;
                 
-            --add|--delete|--lock|--unlock|--update|--view|--search|--report|--export)
+            --add|--delete|--lock|--unlock|--update|--view|--search|--report|--export|--apply-roles|--manage-groups)
                 OPERATION="$1"
                 shift
-                ;;
-            
-            --apply-roles|--manage-groups)
-                OPERATION="$1"
-                # Capture the filename as next argument if not --input
-                shift
-                if [ $# -gt 0 ] && [[ ! "$1" =~ ^-- ]]; then
-                    FILE="$1"
-                    shift
-                fi
                 ;;
                 
-            user|group|user-group|user-provision|users|groups|user-groups|summary|security|compliance|activity|storage|recent-logins|all)
+            user|group|user-group|users|groups|user-groups|summary|security|compliance|activity|storage|recent-logins|all)
                 if [ "$OPERATION" = "--report" ]; then
                     REPORT_TYPE="$1"
                 elif [ "$OPERATION" = "--export" ]; then
@@ -213,6 +225,7 @@ parse_arguments() {
                 shift
                 ;;
                 
+            # ============ FORMAT & INPUT ==================
             --format)
                 case "$2" in
                     json)
@@ -241,30 +254,6 @@ parse_arguments() {
                 shift 2
                 ;;
                 
-            --hours)
-                RECENT_HOURS="$2"
-                shift 2
-                ;;
-                
-            --user)
-                if [ "$OPERATION" = "--view" ] && [ "$ACTION" = "recent-logins" ]; then
-                    RECENT_USER="$2"
-                else
-                    USERNAME="$2"
-                fi
-                shift 2
-                ;;
-                
-            --days)
-                if [ "$OPERATION" = "--view" ] && [ "$ACTION" = "recent-logins" ]; then
-                    RECENT_DAYS="$2"
-                    RECENT_HOURS=$((2 * 24))
-                elif [ "$OPERATION" = "--report" ]; then
-                    REPORT_DAYS="$2"
-                fi
-                shift 2
-                ;;
-                
             --names)
                 FILE="$2"
                 shift 2
@@ -276,6 +265,147 @@ parse_arguments() {
                 elif [ "$ACTION" = "group" ]; then
                     GROUPNAME="$2"
                 fi
+                shift 2
+                ;;
+                
+            # ============ VIEW PARAMETERS (NEW v2.0.0) ==================
+            --search)
+                VIEW_SEARCH="$2"
+                shift 2
+                ;;
+                
+            --limit)
+                VIEW_LIMIT="$2"
+                shift 2
+                ;;
+                
+            --skip)
+                VIEW_SKIP="$2"
+                shift 2
+                ;;
+                
+            --sort)
+                VIEW_SORT="$2"
+                shift 2
+                ;;
+                
+            --reverse)
+                VIEW_REVERSE=true
+                shift
+                ;;
+                
+            --columns)
+                VIEW_COLUMNS="$2"
+                shift 2
+                ;;
+                
+            --count-only)
+                VIEW_COUNT_ONLY=true
+                shift
+                ;;
+                
+            --exclude)
+                VIEW_EXCLUDE="$2"
+                shift 2
+                ;;
+                
+            --filter)
+                VIEW_FILTER="$2"
+                shift 2
+                ;;
+                
+            --in-group)
+                VIEW_IN_GROUP="$2"
+                shift 2
+                ;;
+                
+            --has-member)
+                VIEW_HAS_MEMBER="$2"
+                shift 2
+                ;;
+                
+            --where)
+                VIEW_WHERE="$2"
+                shift 2
+                ;;
+                
+            --uid-range)
+                VIEW_UID_RANGE="$2"
+                shift 2
+                ;;
+                
+            --gid-range)
+                VIEW_GID_RANGE="$2"
+                shift 2
+                ;;
+                
+            --home-size-range)
+                VIEW_HOME_SIZE_RANGE="$2"
+                shift 2
+                ;;
+                
+            --member-count-range)
+                VIEW_MEMBER_COUNT_RANGE="$2"
+                shift 2
+                ;;
+                
+            --days)
+                VIEW_TIME_PARAM="$2"
+                if [ "$OPERATION" = "--report" ]; then
+                    REPORT_DAYS="$2"
+                fi
+                shift 2
+                ;;
+                
+            --hours)
+                VIEW_TIME_PARAM="$2"
+                shift 2
+                ;;
+                
+            --group-by)
+                VIEW_GROUP_BY="$2"
+                shift 2
+                ;;
+                
+            --aggregate)
+                VIEW_AGGREGATE="$2"
+                shift 2
+                ;;
+                
+            --tree-by)
+                VIEW_TREE_BY="$2"
+                shift 2
+                ;;
+                
+            --include-group-details|--include-user-details|--include-related)
+                VIEW_INCLUDE_RELATED=true
+                shift
+                ;;
+                
+            --validate)
+                VIEW_VALIDATE=true
+                shift
+                ;;
+                
+            --detailed)
+                VIEW_DETAILED=true
+                shift
+                ;;
+                
+            # ============ OUTPUT OPTIONS ==================
+            --json)
+                JSON_OUTPUT=true
+                shift
+                ;;
+                
+            --output)
+                EXPORT_OUTPUT="$2"
+                shift 2
+                ;;
+                
+            # ============ EXISTING OPTIONS ==================
+            --user)
+                USERNAME="$2"
                 shift 2
                 ;;
                 
@@ -294,38 +424,8 @@ parse_arguments() {
                 shift 2
                 ;;
                 
-            --filter)
-                VIEW_FILTER="$2"
-                shift 2
-                ;;
-                
-            --pattern)
-                SEARCH_PATTERN="$2"
-                shift 2
-                ;;
-                
-            --status)
-                SEARCH_STATUS="$2"
-                shift 2
-                ;;
-                
-            --in-group)
-                SEARCH_GROUP="$2"
-                shift 2
-                ;;
-                
-            --has-member)
-                SEARCH_MEMBER="$2"
-                shift 2
-                ;;
-                
             --dry-run)
                 DRY_RUN=true
-                shift
-                ;;
-                
-            --json)
-                JSON_OUTPUT=true
                 shift
                 ;;
                 
@@ -460,26 +560,40 @@ show_dry_run_banner() {
     fi
 }
 
+# ============ BACKWARD COMPATIBILITY: SEARCH -> VIEW ==================
+# Route old --search commands to new --view with search parameter
+route_search_to_view() {
+    if [ "$OPERATION" = "--search" ]; then
+        OPERATION="--view"
+        # search pattern is already in VIEW_SEARCH
+        # search filters already in VIEW_FILTER, VIEW_IN_GROUP, VIEW_HAS_MEMBER
+        log_debug "Routing --search to --view (backward compatibility)"
+    fi
+}
+
 # ============ OPERATION ROUTER ==================
 execute_operation() {
     show_dry_run_banner
+    
+    # Route old search commands to view
+    route_search_to_view
     
     case "$OPERATION" in
         --add)
             [ -z "$FILE" ] && { echo "${ICON_ERROR} Missing --names <file> or --input <file>"; exit 1; }
             case "$ACTION" in
                 user)
-                    # UPDATED: Use refactored add_users with format detection
-                    add_users "$FILE" "$INPUT_FORMAT"
+                    if [ "$JSON_INPUT" = true ]; then
+                        add_users_from_json "$FILE"
+                    else
+                        add_users "$FILE"
+                    fi
                     ;;
                 group) 
-                    # UPDATED: Use refactored add_groups with format detection
-                    add_groups "$FILE" "$INPUT_FORMAT"
+                    add_groups "$FILE" 
                     ;;
-                user-group|user-provision) 
-                    # UPDATED: Uses refactored provision_users_with_groups
-                    # Supports GLOBAL_* variables for new user creation
-                    provision_users_with_groups "$FILE"
+                user-group) 
+                    add_users_to_groups "$FILE" 
                     ;;
                 *) 
                     echo "${ICON_ERROR} Invalid action: $ACTION"
@@ -515,11 +629,13 @@ execute_operation() {
             
         --lock)
             if [ -n "$USERNAME" ]; then
-                # Single user lock
-                lock_single_user "$USERNAME" "$LOCK_REASON"
+                lock_user "$USERNAME" "$LOCK_REASON"
             elif [ -n "$FILE" ]; then
-                # Bulk lock from file
-                lock_users "$FILE" "$INPUT_FORMAT" "$LOCK_REASON"
+                if [ "$JSON_INPUT" = true ]; then
+                    lock_users "$FILE" "json" "$LOCK_REASON"
+                else
+                    lock_users "$FILE" "text" "$LOCK_REASON"
+                fi
             else
                 echo "${ICON_ERROR} Missing --name <username> or --names <file>"
                 exit 1
@@ -528,11 +644,13 @@ execute_operation() {
             
         --unlock)
             if [ -n "$USERNAME" ]; then
-                # Single user unlock
-                unlock_single_user "$USERNAME"
+                unlock_user "$USERNAME"
             elif [ -n "$FILE" ]; then
-                # Bulk unlock from file
-                unlock_users "$FILE" "$INPUT_FORMAT"
+                if [ "$JSON_INPUT" = true ]; then
+                    unlock_users "$FILE" "json"
+                else
+                    unlock_users "$FILE" "text"
+                fi
             else
                 echo "${ICON_ERROR} Missing --name <username> or --names <file>"
                 exit 1
@@ -558,6 +676,8 @@ execute_operation() {
             ;;
             
         --view)
+            # TODO: Phase 2 - Implement new view.sh functions with all parameters
+            # For now, route to existing view functions
             case "$ACTION" in
                 users) 
                     if [ "$JSON_OUTPUT" = true ]; then
@@ -606,36 +726,13 @@ execute_operation() {
                     ;;
                 recent-logins) 
                     if [ "$JSON_OUTPUT" = true ]; then
-                        view_recent_logins_json "$RECENT_HOURS" "$RECENT_DAYS" "$RECENT_USER"
+                        view_recent_logins_json "$VIEW_TIME_PARAM" "" "$USERNAME"
                     else
-                        view_recent_logins "$RECENT_HOURS" "$RECENT_DAYS" "$RECENT_USER"
+                        view_recent_logins "$VIEW_TIME_PARAM" "" "$USERNAME"
                     fi
                     ;;
                 *)
                     echo "${ICON_ERROR} Invalid view target: $ACTION"
-                    exit 1
-                    ;;
-            esac
-            ;;
-            
-        --search)
-            case "$ACTION" in
-                users) 
-                    if [ "$JSON_OUTPUT" = true ]; then
-                        search_users_json "$SEARCH_PATTERN" "$SEARCH_STATUS" "$SEARCH_GROUP"
-                    else
-                        search_users "$SEARCH_PATTERN" "$SEARCH_STATUS" "$SEARCH_GROUP"
-                    fi
-                    ;;
-                groups) 
-                    if [ "$JSON_OUTPUT" = true ]; then
-                        search_groups_json "$SEARCH_PATTERN" "$SEARCH_MEMBER" ""
-                    else
-                        search_groups "$SEARCH_PATTERN" "$SEARCH_MEMBER" ""
-                    fi
-                    ;;
-                *)
-                    echo "${ICON_ERROR} Invalid search target: $ACTION"
                     exit 1
                     ;;
             esac
@@ -669,12 +766,12 @@ execute_operation() {
             ;;
             
         --apply-roles)
-            [ -z "$FILE" ] && { echo "${ICON_ERROR} Missing role file (usage: --apply-roles <file>)"; exit 1; }
+            [ -z "$FILE" ] && { echo "${ICON_ERROR} Missing role file"; exit 1; }
             apply_roles_from_json "$FILE"
             ;;
             
         --manage-groups)
-            [ -z "$FILE" ] && { echo "${ICON_ERROR} Missing groups file (usage: --manage-groups <file>)"; exit 1; }
+            [ -z "$FILE" ] && { echo "${ICON_ERROR} Missing groups file"; exit 1; }
             manage_groups_from_json "$FILE"
             ;;
             

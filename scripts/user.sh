@@ -409,11 +409,6 @@ parse_arguments() {
                 shift 2
                 ;;
                 
-            --output)
-                EXPORT_OUTPUT="$2"
-                shift 2
-                ;;
-                
             --transfer-files)
                 TRANSFER_GROUP="$2"
                 shift 2

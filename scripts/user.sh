@@ -676,67 +676,187 @@ execute_operation() {
             ;;
             
         --view)
-            # TODO: Phase 2 - Implement new view.sh functions with all parameters
-            # For now, route to existing view functions
+            # Route to view operations with new parameters
             case "$ACTION" in
-                users) 
+                users)
+                    # Get users data with all filters
+                    local data=$(get_users_data \
+                        "${VIEW_FILTER:-all}" \
+                        "$VIEW_SEARCH" \
+                        "${VIEW_SORT:-username}" \
+                        "${VIEW_LIMIT:-0}" \
+                        "${VIEW_SKIP:-0}" \
+                        "$VIEW_EXCLUDE" \
+                        "$VIEW_TIME_PARAM" \
+                        "$VIEW_IN_GROUP" \
+                        "$VIEW_WHERE" \
+                        "$VIEW_UID_RANGE" \
+                        "$VIEW_HOME_SIZE_RANGE" \
+                        "$VIEW_GROUP_BY" \
+                        "$VIEW_AGGREGATE" \
+                        "$VIEW_TREE_BY" \
+                        "$VIEW_INCLUDE_RELATED")
+                    
+                    # Format and display output
                     if [ "$JSON_OUTPUT" = true ]; then
-                        view_all_users_json "${VIEW_FILTER:-all}"
+                        format_users_json "$data" "$VIEW_COLUMNS" "$VIEW_COUNT_ONLY"
                     else
-                        view_all_users "${VIEW_FILTER:-all}"
+                        display_users "$data" "$VIEW_COLUMNS" "$VIEW_COUNT_ONLY"
                     fi
                     ;;
-                groups) 
+                    
+                groups)
+                    # Get groups data with all filters
+                    local data=$(get_groups_data \
+                        "${VIEW_FILTER:-all}" \
+                        "$VIEW_SEARCH" \
+                        "${VIEW_SORT:-groupname}" \
+                        "${VIEW_LIMIT:-0}" \
+                        "${VIEW_SKIP:-0}" \
+                        "$VIEW_EXCLUDE" \
+                        "$VIEW_HAS_MEMBER" \
+                        "$VIEW_WHERE" \
+                        "$VIEW_GID_RANGE" \
+                        "$VIEW_MEMBER_COUNT_RANGE" \
+                        "$VIEW_GROUP_BY" \
+                        "$VIEW_AGGREGATE" \
+                        "$VIEW_INCLUDE_RELATED")
+                    
+                    # Format and display output
                     if [ "$JSON_OUTPUT" = true ]; then
-                        view_all_groups_json "${VIEW_FILTER:-all}"
+                        format_groups_json "$data" "$VIEW_COLUMNS" "$VIEW_COUNT_ONLY"
                     else
-                        view_all_groups "${VIEW_FILTER:-all}"
+                        display_groups "$data" "$VIEW_COLUMNS" "$VIEW_COUNT_ONLY"
                     fi
                     ;;
+                    
                 user)
+                    # Get single user details
                     [ -z "$USERNAME" ] && { echo "${ICON_ERROR} Missing --name <username>"; exit 1; }
+                    
+                    local data=$(get_user_details "$USERNAME" true "${VIEW_TIME_PARAM:-24}")
+                    
+                    if [ -z "$data" ]; then
+                        echo "${ICON_ERROR} User '$USERNAME' not found"
+                        exit 1
+                    fi
+                    
+                    # Format and display output
                     if [ "$JSON_OUTPUT" = true ]; then
-                        view_user_details_json "$USERNAME"
+                        format_user_json "$data"
                     else
-                        view_user_details "$USERNAME"
+                        display_user_details "$data"
                     fi
                     ;;
+                    
                 group)
+                    # Get single group details
                     [ -z "$GROUPNAME" ] && { echo "${ICON_ERROR} Missing --name <groupname>"; exit 1; }
+                    
+                    local data=$(get_group_details "$GROUPNAME")
+                    
+                    if [ -z "$data" ]; then
+                        echo "${ICON_ERROR} Group '$GROUPNAME' not found"
+                        exit 1
+                    fi
+                    
+                    # Format and display output
                     if [ "$JSON_OUTPUT" = true ]; then
-                        view_group_details_json "$GROUPNAME"
+                        format_group_json "$data"
                     else
-                        view_group_details "$GROUPNAME"
+                        display_group_details "$data"
                     fi
                     ;;
+                    
                 user-groups)
+                    # Get user's group memberships
                     [ -z "$USERNAME" ] && { echo "${ICON_ERROR} Missing --name <username>"; exit 1; }
+                    
+                    if ! id "$USERNAME" &>/dev/null; then
+                        echo "${ICON_ERROR} User '$USERNAME' not found"
+                        exit 1
+                    fi
+                    
+                    # Get all group data and filter by member
+                    local data=$(get_groups_data \
+                        "all" \
+                        "" \
+                        "groupname" \
+                        "0" \
+                        "0" \
+                        "" \
+                        "$USERNAME" \
+                        "" \
+                        "" \
+                        "" \
+                        "" \
+                        "" \
+                        "false")
+                    
+                    # Format and display output
                     if [ "$JSON_OUTPUT" = true ]; then
-                        view_user_groups_json "$USERNAME"
+                        format_user_groups_json "$USERNAME" "$data"
                     else
-                        view_user_groups "$USERNAME"
+                        display_user_groups "$USERNAME" "$data"
                     fi
                     ;;
-                summary) 
+                    
+                summary)
+                    # Get system summary
+                    local data=$(get_system_summary "$VIEW_DETAILED")
+                    
+                    # Format and display output
                     if [ "$JSON_OUTPUT" = true ]; then
-                        view_system_summary_json
+                        format_system_summary_json "$data" "$VIEW_DETAILED"
                     else
-                        view_system_summary
+                        display_system_summary "$data" "$VIEW_DETAILED"
                     fi
                     ;;
-                recent-logins) 
-                    if [ "$JSON_OUTPUT" = true ]; then
-                        view_recent_logins_json "$VIEW_TIME_PARAM" "" "$USERNAME"
+                    
+                recent-logins)
+                    # Get recent login data
+                    local hours="${VIEW_TIME_PARAM:-24}"
+                    
+                    # Convert days to hours if --days was used
+                    if [[ "$hours" =~ ^[0-9]+$ ]] && [ "$hours" -gt 100 ]; then
+                        # Assume it's already in hours from --hours
+                        :
                     else
-                        view_recent_logins "$VIEW_TIME_PARAM" "" "$USERNAME"
+                        # Could be from --days, keep as-is
+                        :
+                    fi
+                    
+                    # Get login data for all users or specific user
+                    local data=""
+                    if [ -n "$USERNAME" ]; then
+                        # Single user
+                        data=$(get_recent_logins_for_user "$USERNAME" "$hours")
+                    else
+                        # All users - collect from each
+                        local all_logins=""
+                        while IFS=: read -r username _ uid _; do
+                            is_regular_user "$uid" || continue
+                            local user_logins=$(get_recent_logins_for_user "$username" "$hours" 2>/dev/null)
+                            [ -n "$user_logins" ] && all_logins+="$user_logins"$'\n'
+                        done < /etc/passwd
+                        data="$all_logins"
+                    fi
+                    
+                    # Format and display output
+                    if [ "$JSON_OUTPUT" = true ]; then
+                        format_recent_logins_json "$data" "$hours"
+                    else
+                        display_recent_logins "$data" "$hours"
                     fi
                     ;;
+                    
                 *)
                     echo "${ICON_ERROR} Invalid view target: $ACTION"
                     exit 1
                     ;;
             esac
             ;;
+
             
         --report)
             [ -z "$REPORT_TYPE" ] && { echo "${ICON_ERROR} Missing report type"; exit 1; }

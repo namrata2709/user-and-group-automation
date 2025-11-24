@@ -817,3 +817,698 @@ aggregate_groups() {
 }
 
 # ============================================
+
+# ============================================
+# DISPLAY FUNCTION 1: display_users()
+# ============================================
+# Displays user data in table format
+# Args:
+#   $1 - data (user data array as string, one per line)
+#   $2 - columns (comma-separated column names, or empty for all)
+#   $3 - count_only (true/false)
+# Returns:
+#   Formatted table output
+# Examples:
+#   display_users "$data" "" false
+#   display_users "$data" "username,uid,status" false
+#   display_users "$data" "" true
+display_users() {
+    local data="$1"
+    local columns="$2"
+    local count_only="${3:-false}"
+    
+    # Count results
+    local count=0
+    [ -n "$data" ] && count=$(echo "$data" | wc -l)
+    
+    # Count-only mode
+    if [ "$count_only" = "true" ]; then
+        echo "$count"
+        return 0
+    fi
+    
+    # No results
+    if [ "$count" -eq 0 ]; then
+        echo "${ICON_INFO} No users found"
+        return 0
+    fi
+    
+    # Define all available columns
+    local all_columns="username,uid,primary_group,home,shell,status,last_login,home_size"
+    
+    # Use specified columns or all
+    if [ -z "$columns" ]; then
+        columns="$all_columns"
+    fi
+    
+    # Parse column list
+    IFS=',' read -ra col_array <<< "$columns"
+    
+    # Print header
+    echo "=========================================="
+    echo "Users (${count} found)"
+    echo "=========================================="
+    echo ""
+    
+    # Build header row
+    local header=""
+    for col in "${col_array[@]}"; do
+        col=$(trim "$col")
+        case "$col" in
+            username) header+="$(printf '%-16s' 'USERNAME')" ;;
+            uid) header+="$(printf '%-8s' 'UID')" ;;
+            primary_group) header+="$(printf '%-16s' 'PRIMARY_GROUP')" ;;
+            home) header+="$(printf '%-24s' 'HOME')" ;;
+            shell) header+="$(printf '%-20s' 'SHELL')" ;;
+            status) header+="$(printf '%-10s' 'STATUS')" ;;
+            last_login) header+="$(printf '%-20s' 'LAST_LOGIN')" ;;
+            home_size) header+="$(printf '%-12s' 'HOME_SIZE')" ;;
+            groups) header+="$(printf '%-30s' 'GROUPS')" ;;
+        esac
+    done
+    
+    echo "$header"
+    echo "$(printf '%.0s-' {1..120})"
+    
+    # Print data rows
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        
+        # Parse data object (format: key=value|key=value|...)
+        declare -A user_data
+        while IFS='|' read -ra pairs; do
+            for pair in "${pairs[@]}"; do
+                local key="${pair%%=*}"
+                local value="${pair#*=}"
+                user_data[$key]="$value"
+            done
+        done <<< "$line"
+        
+        # Build output row
+        local row=""
+        for col in "${col_array[@]}"; do
+            col=$(trim "$col")
+            local value="${user_data[$col]:-}"
+            
+            case "$col" in
+                username)
+                    row+="$(printf '%-16s' "${value:0:15}")"
+                    ;;
+                uid)
+                    row+="$(printf '%-8s' "$value")"
+                    ;;
+                primary_group)
+                    row+="$(printf '%-16s' "${value:0:15}")"
+                    ;;
+                home)
+                    row+="$(printf '%-24s' "${value:0:23}")"
+                    ;;
+                shell)
+                    local short_shell=$(basename "$value")
+                    row+="$(printf '%-20s' "${short_shell:0:19}")"
+                    ;;
+                status)
+                    if [ "$value" = "LOCKED" ]; then
+                        row+="$(printf '\033[0;31m%-10s\033[0m' "$value")"  # Red
+                    else
+                        row+="$(printf '\033[0;32m%-10s\033[0m' "$value")"  # Green
+                    fi
+                    ;;
+                last_login)
+                    [ "$value" = "Never" ] && value="Never" || value="${value:0:19}"
+                    row+="$(printf '%-20s' "$value")"
+                    ;;
+                home_size)
+                    row+="$(printf '%-12s' "$value")"
+                    ;;
+                groups)
+                    row+="$(printf '%-30s' "${value:0:29}")"
+                    ;;
+            esac
+        done
+        
+        echo "$row"
+        
+        # Clear associative array for next iteration
+        unset user_data
+        declare -A user_data
+        
+    done <<< "$data"
+    
+    echo "$(printf '%.0s-' {1..120})"
+    echo "Total: $count user(s)"
+}
+
+# ============================================
+# DISPLAY FUNCTION 2: display_groups()
+# ============================================
+# Displays group data in table format
+# Args:
+#   $1 - data (group data array as string, one per line)
+#   $2 - columns (comma-separated column names, or empty for all)
+#   $3 - count_only (true/false)
+# Returns:
+#   Formatted table output
+display_groups() {
+    local data="$1"
+    local columns="$2"
+    local count_only="${3:-false}"
+    
+    # Count results
+    local count=0
+    [ -n "$data" ] && count=$(echo "$data" | wc -l)
+    
+    # Count-only mode
+    if [ "$count_only" = "true" ]; then
+        echo "$count"
+        return 0
+    fi
+    
+    # No results
+    if [ "$count" -eq 0 ]; then
+        echo "${ICON_INFO} No groups found"
+        return 0
+    fi
+    
+    # Define all available columns
+    local all_columns="groupname,gid,member_count,members"
+    
+    # Use specified columns or all
+    if [ -z "$columns" ]; then
+        columns="$all_columns"
+    fi
+    
+    # Parse column list
+    IFS=',' read -ra col_array <<< "$columns"
+    
+    # Print header
+    echo "=========================================="
+    echo "Groups (${count} found)"
+    echo "=========================================="
+    echo ""
+    
+    # Build header row
+    local header=""
+    for col in "${col_array[@]}"; do
+        col=$(trim "$col")
+        case "$col" in
+            groupname) header+="$(printf '%-20s' 'GROUPNAME')" ;;
+            gid) header+="$(printf '%-8s' 'GID')" ;;
+            member_count) header+="$(printf '%-14s' 'MEMBER_COUNT')" ;;
+            members) header+="$(printf '%-50s' 'MEMBERS')" ;;
+        esac
+    done
+    
+    echo "$header"
+    echo "$(printf '%.0s-' {1..100})"
+    
+    # Print data rows
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        
+        # Parse data object
+        declare -A group_data
+        while IFS='|' read -ra pairs; do
+            for pair in "${pairs[@]}"; do
+                local key="${pair%%=*}"
+                local value="${pair#*=}"
+                group_data[$key]="$value"
+            done
+        done <<< "$line"
+        
+        # Build output row
+        local row=""
+        for col in "${col_array[@]}"; do
+            col=$(trim "$col")
+            local value="${group_data[$col]:-}"
+            
+            case "$col" in
+                groupname)
+                    row+="$(printf '%-20s' "${value:0:19}")"
+                    ;;
+                gid)
+                    row+="$(printf '%-8s' "$value")"
+                    ;;
+                member_count)
+                    if [ "$value" -eq 0 ]; then
+                        row+="$(printf '\033[0;33m%-14s\033[0m' "$value (empty)")"  # Yellow
+                    else
+                        row+="$(printf '%-14s' "$value")"
+                    fi
+                    ;;
+                members)
+                    local members_display="${value:-none}"
+                    [ ${#members_display} -gt 50 ] && members_display="${members_display:0:47}..."
+                    row+="$(printf '%-50s' "$members_display")"
+                    ;;
+            esac
+        done
+        
+        echo "$row"
+        
+        unset group_data
+        declare -A group_data
+        
+    done <<< "$data"
+    
+    echo "$(printf '%.0s-' {1..100})"
+    echo "Total: $count group(s)"
+}
+
+# ============================================
+# DISPLAY FUNCTION 3: display_user_details()
+# ============================================
+# Displays detailed information for a single user
+# Args:
+#   $1 - data (single user data object)
+# Returns:
+#   Formatted detailed output
+display_user_details() {
+    local data="$1"
+    
+    # Parse data object
+    declare -A user_data
+    while IFS='|' read -ra pairs; do
+        for pair in "${pairs[@]}"; do
+            local key="${pair%%=*}"
+            local value="${pair#*=}"
+            user_data[$key]="$value"
+        done
+    done <<< "$data"
+    
+    local username="${user_data[username]}"
+    
+    echo "=========================================="
+    echo "User Details: $username"
+    echo "=========================================="
+    echo ""
+    
+    # Basic Information
+    echo "${ICON_USER} BASIC INFORMATION:"
+    echo "  Username:      $username"
+    echo "  UID:           ${user_data[uid]}"
+    echo "  Primary Group: ${user_data[primary_group]} (GID: ${user_data[gid]})"
+    echo "  Home:          ${user_data[home]}"
+    echo "  Shell:         ${user_data[shell]}"
+    echo "  Comment:       ${user_data[gecos]:-none}"
+    echo ""
+    
+    # Status
+    echo "${ICON_INFO} STATUS:"
+    local status="${user_data[status]}"
+    if [ "$status" = "LOCKED" ]; then
+        echo "  Account:       ${ICON_LOCK} LOCKED"
+    else
+        echo "  Account:       ${ICON_SUCCESS} ACTIVE"
+    fi
+    
+    local has_sudo="${user_data[has_sudo]}"
+    if [ "$has_sudo" = "true" ]; then
+        echo "  Sudo Access:   ${ICON_WARNING} YES"
+    else
+        echo "  Sudo Access:   No"
+    fi
+    
+    echo "  Last Login:    ${user_data[last_login]}"
+    echo "  Expires:       ${user_data[acc_expires]}"
+    echo ""
+    
+    # Groups
+    echo "${ICON_GROUP} GROUP MEMBERSHIPS:"
+    local groups="${user_data[groups]}"
+    if [ -n "$groups" ]; then
+        echo "$groups" | tr ' ' '\n' | while read group; do
+            [ -n "$group" ] && echo "  - $group"
+        done
+    else
+        echo "  (none)"
+    fi
+    echo ""
+    
+    # Resources
+    echo "ðŸ'¾ RESOURCES:"
+    echo "  Home Size:     ${user_data[home_size]}"
+    echo "  Processes:     ${user_data[processes]:-0}"
+    echo "  Cron Jobs:     ${user_data[cron_jobs]:-0}"
+    echo ""
+    
+    # Recent Logins (if available)
+    if [ -n "${user_data[recent_logins]}" ]; then
+        echo "ðŸ"… RECENT LOGINS:"
+        local login_count=0
+        while IFS='|' read -r timestamp tty from status duration; do
+            [ -z "$timestamp" ] && continue
+            ((login_count++))
+            
+            local date=$(date -d "@$timestamp" '+%Y-%m-%d %H:%M' 2>/dev/null || echo "Unknown")
+            local dur_formatted=$(format_duration "$duration")
+            
+            if [ "$status" = "active" ]; then
+                echo "  ${ICON_SUCCESS} $date from $tty ($from) - Active ($dur_formatted)"
+            else
+                echo "  ${ICON_INFO} $date from $tty ($from) - $dur_formatted"
+            fi
+        done <<< "${user_data[recent_logins]}"
+        
+        [ "$login_count" -eq 0 ] && echo "  No recent logins"
+        echo ""
+    fi
+    
+    echo "=========================================="
+}
+
+# ============================================
+# DISPLAY FUNCTION 4: display_group_details()
+# ============================================
+# Displays detailed information for a single group
+# Args:
+#   $1 - data (single group data object)
+# Returns:
+#   Formatted detailed output
+display_group_details() {
+    local data="$1"
+    
+    # Parse data object
+    declare -A group_data
+    while IFS='|' read -ra pairs; do
+        for pair in "${pairs[@]}"; do
+            local key="${pair%%=*}"
+            local value="${pair#*=}"
+            group_data[$key]="$value"
+        done
+    done <<< "$data"
+    
+    local groupname="${group_data[groupname]}"
+    
+    echo "=========================================="
+    echo "Group Details: $groupname"
+    echo "=========================================="
+    echo ""
+    
+    echo "${ICON_GROUP} BASIC INFORMATION:"
+    echo "  Group Name:    $groupname"
+    echo "  GID:           ${group_data[gid]}"
+    echo "  Type:          ${group_data[type]}"
+    echo ""
+    
+    echo "${ICON_USER} MEMBERS:"
+    local members="${group_data[members]}"
+    local member_count="${group_data[member_count]}"
+    
+    if [ "$member_count" -gt 0 ]; then
+        echo "  Count: $member_count"
+        echo ""
+        echo "$members" | tr ',' '\n' | while read member; do
+            [ -n "$member" ] && echo "  - $member"
+        done
+    else
+        echo "  ${ICON_WARNING} No members"
+    fi
+    echo ""
+    
+    echo "ðŸ'¤ PRIMARY GROUP FOR:"
+    local primary_users="${group_data[primary_users]}"
+    local primary_count="${group_data[primary_count]:-0}"
+    
+    if [ "$primary_count" -gt 0 ]; then
+        echo "  Count: $primary_count"
+        echo ""
+        echo "$primary_users" | while read user; do
+            [ -n "$user" ] && echo "  - $user"
+        done
+    else
+        echo "  (none)"
+    fi
+    echo ""
+    
+    echo "=========================================="
+}
+
+# ============================================
+# DISPLAY FUNCTION 5: display_system_summary()
+# ============================================
+# Displays system summary with optional detailed statistics
+# Args:
+#   $1 - data (summary data object)
+#   $2 - detailed (true/false)
+# Returns:
+#   Formatted summary output
+display_system_summary() {
+    local data="$1"
+    local detailed="${2:-false}"
+    
+    # Parse data object
+    declare -A summary_data
+    while IFS='|' read -ra pairs; do
+        for pair in "${pairs[@]}"; do
+            local key="${pair%%=*}"
+            local value="${pair#*=}"
+            summary_data[$key]="$value"
+        done
+    done <<< "$data"
+    
+    echo "=========================================="
+    echo "System Summary"
+    echo "Generated: $(date '+%Y-%m-%d %H:%M:%S')"
+    echo "=========================================="
+    echo ""
+    
+    # Users
+    echo "${ICON_USER} USERS:"
+    echo "  Total:         ${summary_data[total_users]}"
+    echo "  Active:        ${summary_data[active_users]}"
+    echo "  Locked:        ${summary_data[locked_users]}"
+    echo "  Sudo Access:   ${summary_data[sudo_users]}"
+    echo ""
+    
+    # Groups
+    echo "${ICON_GROUP} GROUPS:"
+    echo "  Total:         ${summary_data[total_groups]}"
+    echo "  Empty:         ${summary_data[empty_groups]}"
+    echo ""
+    
+    # Shells
+    echo "ðŸš SHELLS:"
+    echo "  Bash:          ${summary_data[bash_users]}"
+    echo "  Nologin:       ${summary_data[nologin_users]}"
+    echo ""
+    
+    # Detailed statistics
+    if [ "$detailed" = "true" ]; then
+        echo "=========================================="
+        echo "DETAILED STATISTICS"
+        echo "=========================================="
+        echo ""
+        
+        # UID Statistics
+        echo "ðŸ"¢ UID STATISTICS:"
+        echo "  Range:         ${summary_data[uid_min]:-N/A} - ${summary_data[uid_max]:-N/A}"
+        echo "  Average:       ${summary_data[uid_avg]:-N/A}"
+        echo "  Median:        ${summary_data[uid_median]:-N/A}"
+        echo ""
+        
+        # Home Directory Statistics
+        echo "ðŸ'¾ HOME DIRECTORIES:"
+        echo "  Total Size:    ${summary_data[total_home_mb]:-0} MB"
+        echo "  Average:       ${summary_data[home_avg_mb]:-0} MB"
+        echo "  Range:         ${summary_data[home_min_mb]:-0} - ${summary_data[home_max_mb]:-0} MB"
+        echo ""
+        
+        # Group Statistics
+        echo "${ICON_GROUP} GROUP STATISTICS:"
+        echo "  Empty:         ${summary_data[empty_groups]:-0}"
+        echo "  Single Member: ${summary_data[single_member_groups]:-0}"
+        echo "  Large (>10):   ${summary_data[large_groups]:-0}"
+        echo "  Avg Members:   ${summary_data[member_avg]:-0}"
+        echo "  Max Members:   ${summary_data[member_max]:-0}"
+        echo ""
+        
+        # Shell Distribution
+        echo "ðŸš SHELL DISTRIBUTION:"
+        echo "  Bash:          ${summary_data[bash_users]:-0}"
+        echo "  Sh:            ${summary_data[sh_users]:-0}"
+        echo "  Zsh:           ${summary_data[zsh_users]:-0}"
+        echo "  Nologin:       ${summary_data[nologin_users]:-0}"
+        echo "  Other:         ${summary_data[other_shell_users]:-0}"
+        echo ""
+        
+        # Login Activity
+        echo "ðŸ"… LOGIN ACTIVITY:"
+        echo "  Never:         ${summary_data[never_logged_in]:-0}"
+        echo "  Last Day:      ${summary_data[logged_in_last_day]:-0}"
+        echo "  Last Week:     ${summary_data[logged_in_last_week]:-0}"
+        echo "  Last Month:    ${summary_data[logged_in_last_month]:-0}"
+        echo "  Inactive:      ${summary_data[inactive_users]:-0}"
+        echo ""
+        
+        # Password Policies
+        echo "ðŸ"' PASSWORD POLICIES:"
+        echo "  Never Expires: ${summary_data[pwd_never_expires]:-0}"
+        echo "  30 Days:       ${summary_data[pwd_expires_30]:-0}"
+        echo "  60 Days:       ${summary_data[pwd_expires_60]:-0}"
+        echo "  90 Days:       ${summary_data[pwd_expires_90]:-0}"
+        echo "  Custom:        ${summary_data[pwd_expires_custom]:-0}"
+        echo ""
+        
+        # Active Resources
+        echo "âš™ï¸  ACTIVE RESOURCES:"
+        echo "  Users w/ Processes: ${summary_data[users_with_processes]:-0}"
+        echo "  Total Processes:    ${summary_data[total_user_processes]:-0}"
+        echo "  Users w/ Cron:      ${summary_data[users_with_cron]:-0}"
+        echo "  Total Cron Jobs:    ${summary_data[total_cron_jobs]:-0}"
+        echo ""
+    fi
+    
+    echo "=========================================="
+}
+
+# ============================================
+# HELPER: format_duration()
+# ============================================
+# Formats duration in seconds to human-readable format
+# Args:
+#   $1 - duration in seconds
+# Returns:
+#   Formatted string (e.g., "2h 30m")
+format_duration() {
+    local seconds="$1"
+    
+    if [ "$seconds" -lt 60 ]; then
+        echo "${seconds}s"
+    elif [ "$seconds" -lt 3600 ]; then
+        local mins=$((seconds / 60))
+        echo "${mins}m"
+    elif [ "$seconds" -lt 86400 ]; then
+        local hours=$((seconds / 3600))
+        local mins=$(((seconds % 3600) / 60))
+        echo "${hours}h ${mins}m"
+    else
+        local days=$((seconds / 86400))
+        local hours=$(((seconds % 86400) / 3600))
+        echo "${days}d ${hours}h"
+    fi
+}
+
+# ============================================
+# HELPER: display_user_groups()
+# ============================================
+# Displays groups for a user
+# Args:
+#   $1 - username
+#   $2 - group data (filtered to this user)
+# Returns:
+#   Formatted group list
+display_user_groups() {
+    local username="$1"
+    local data="$2"
+    
+    echo "=========================================="
+    echo "Groups for User: $username"
+    echo "=========================================="
+    echo ""
+    
+    # Get primary group
+    local primary_group=$(id -gn "$username" 2>/dev/null)
+    local primary_gid=$(id -g "$username" 2>/dev/null)
+    
+    echo "${ICON_GROUP} PRIMARY GROUP:"
+    echo "  $primary_group (GID: $primary_gid)"
+    echo ""
+    
+    # Count secondary groups
+    local count=0
+    [ -n "$data" ] && count=$(echo "$data" | wc -l)
+    
+    echo "${ICON_GROUP} SECONDARY GROUPS: ($count)"
+    
+    if [ "$count" -gt 0 ]; then
+        echo ""
+        while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            
+            # Parse group data
+            declare -A group_data
+            while IFS='|' read -ra pairs; do
+                for pair in "${pairs[@]}"; do
+                    local key="${pair%%=*}"
+                    local value="${pair#*=}"
+                    group_data[$key]="$value"
+                done
+            done <<< "$line"
+            
+            local groupname="${group_data[groupname]}"
+            local gid="${group_data[gid]}"
+            
+            # Skip primary group
+            [ "$groupname" = "$primary_group" ] && continue
+            
+            echo "  - $groupname (GID: $gid)"
+            
+            unset group_data
+            declare -A group_data
+        done <<< "$data"
+    else
+        echo "  (none)"
+    fi
+    
+    echo ""
+    echo "=========================================="
+}
+
+# ============================================
+# HELPER: display_recent_logins()
+# ============================================
+# Displays recent login data
+# Args:
+#   $1 - login data (timestamp|tty|from|status|duration)
+#   $2 - hours (for display header)
+# Returns:
+#   Formatted login table
+display_recent_logins() {
+    local data="$1"
+    local hours="${2:-24}"
+    
+    # Count logins
+    local count=0
+    [ -n "$data" ] && count=$(echo "$data" | grep -c '|')
+    
+    echo "=========================================="
+    echo "Recent Logins (Last $hours hours)"
+    echo "=========================================="
+    echo ""
+    
+    if [ "$count" -eq 0 ]; then
+        echo "${ICON_INFO} No logins in the last $hours hours"
+        return 0
+    fi
+    
+    # Print header
+    printf "%-16s %-20s %-24s %-12s %-12s\n" "USERNAME" "TIME" "FROM" "STATUS" "DURATION"
+    echo "$(printf '%.0s-' {1..90})"
+    
+    # Print data rows
+    while IFS='|' read -r username timestamp tty from status duration; do
+        [ -z "$timestamp" ] && continue
+        
+        local date=$(date -d "@$timestamp" '+%Y-%m-%d %H:%M' 2>/dev/null || echo "Unknown")
+        local dur_formatted=$(format_duration "$duration")
+        
+        # Color code status
+        local status_display
+        if [ "$status" = "active" ]; then
+            status_display="$(printf '\033[0;32m%-12s\033[0m' "$status")"  # Green
+        else
+            status_display="$(printf '%-12s' "$status")"
+        fi
+        
+        printf "%-16s %-20s %-24s %b %-12s\n" \
+            "${username:0:15}" \
+            "$date" \
+            "$from" \
+            "$status_display" \
+            "$dur_formatted"
+    done <<< "$data"
+    
+    echo "$(printf '%.0s-' {1..90})"
+    echo "Total: $count login(s)"
+}

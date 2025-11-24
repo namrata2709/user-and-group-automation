@@ -645,3 +645,336 @@ log_debug() {
         echo "[DEBUG $(date '+%H:%M:%S')] $1" >&2
     fi
 }
+
+get_recent_logins_for_user() {
+    local username="$1"
+    local hours="${2:-24}"
+    
+    # Validate username
+    if ! id "$username" &>/dev/null; then
+        return 1
+    fi
+    
+    # Calculate cutoff timestamp
+    local cutoff_timestamp=$(date -d "$hours hours ago" +%s 2>/dev/null)
+    if [ -z "$cutoff_timestamp" ]; then
+        # Fallback for systems without -d support
+        cutoff_timestamp=$(($(date +%s) - (hours * 3600)))
+    fi
+    
+    local results=()
+    
+    # Parse last command output (use -F for full dates)
+    while read -r line; do
+        # Skip header and non-login lines
+        [[ "$line" =~ ^reboot ]] && continue
+        [[ "$line" =~ ^wtmp ]] && continue
+        [[ -z "$line" ]] && continue
+        
+        # Parse line components
+        local user=$(echo "$line" | awk '{print $1}')
+        
+        # Filter by username
+        [ "$user" != "$username" ] && continue
+        
+        local tty=$(echo "$line" | awk '{print $2}')
+        local from=$(echo "$line" | awk '{print $3}')
+        local login_date=$(echo "$line" | awk '{print $4, $5, $7, $6}')
+        local duration=$(echo "$line" | grep -oP '\(.*?\)' | tr -d '()')
+        
+        # Parse login timestamp
+        local login_timestamp=$(date -d "$login_date" +%s 2>/dev/null)
+        
+        # Skip if parsing failed or before cutoff
+        [ -z "$login_timestamp" ] && continue
+        [ "$login_timestamp" -lt "$cutoff_timestamp" ] && continue
+        
+        # Normalize 'from' field
+        [ "$from" = "-" ] && from="local"
+        [ -z "$from" ] && from="local"
+        
+        # Determine session status and duration
+        local session_status="logged_out"
+        local duration_seconds=0
+        
+        if [[ "$duration" =~ still ]]; then
+            # Active session
+            session_status="active"
+            local current_timestamp=$(date +%s)
+            duration_seconds=$((current_timestamp - login_timestamp))
+        elif [[ "$duration" =~ ([0-9]+):([0-9]+) ]]; then
+            # Logged out session with duration HH:MM
+            local dur_hours="${BASH_REMATCH[1]}"
+            local dur_mins="${BASH_REMATCH[2]}"
+            duration_seconds=$(((dur_hours * 3600) + (dur_mins * 60)))
+        elif [[ "$duration" =~ ([0-9]+)\+([0-9]+):([0-9]+) ]]; then
+            # Logged out session with duration DAYS+HH:MM
+            local dur_days="${BASH_REMATCH[1]}"
+            local dur_hours="${BASH_REMATCH[2]}"
+            local dur_mins="${BASH_REMATCH[3]}"
+            duration_seconds=$(((dur_days * 86400) + (dur_hours * 3600) + (dur_mins * 60)))
+        fi
+        
+        # Format result: timestamp|tty|from|status|duration_seconds
+        results+=("$login_timestamp|$tty|$from|$session_status|$duration_seconds")
+        
+    done < <(last -F -w "$username" 2>/dev/null | tail -n +2)
+    
+    # Return results (one per line)
+    if [ ${#results[@]} -gt 0 ]; then
+        printf '%s\n' "${results[@]}"
+        return 0
+    else
+        return 1
+    fi
+}
+
+# ============================================
+# NEW: DETAILED STATISTICS
+# ============================================
+
+# calculate_detailed_statistics()
+# Calculates advanced system statistics for summary --detailed
+# Args:
+#   None (reads system state)
+# Returns:
+#   Formatted statistics string (key=value pairs separated by |)
+# Examples:
+#   calculate_detailed_statistics
+calculate_detailed_statistics() {
+    local min_uid="${MIN_USER_UID:-1000}"
+    local max_uid="${MAX_USER_UID:-60000}"
+    local min_gid="${MIN_GROUP_GID:-1000}"
+    
+    # ============================================
+    # USER STATISTICS
+    # ============================================
+    
+    # Collect all regular user UIDs
+    local uids=()
+    while IFS=: read -r username _ uid _; do
+        is_regular_user "$uid" || continue
+        uids+=("$uid")
+    done < /etc/passwd
+    
+    # Calculate UID statistics
+    local uid_count=${#uids[@]}
+    local uid_min=999999
+    local uid_max=0
+    local uid_sum=0
+    
+    for uid in "${uids[@]}"; do
+        [ "$uid" -lt "$uid_min" ] && uid_min=$uid
+        [ "$uid" -gt "$uid_max" ] && uid_max=$uid
+        uid_sum=$((uid_sum + uid))
+    done
+    
+    local uid_avg=0
+    [ "$uid_count" -gt 0 ] && uid_avg=$((uid_sum / uid_count))
+    
+    # Calculate UID median (approximate)
+    local uid_median=$uid_avg
+    if [ "$uid_count" -gt 0 ]; then
+        local sorted_uids=($(printf '%s\n' "${uids[@]}" | sort -n))
+        local mid=$((uid_count / 2))
+        uid_median=${sorted_uids[$mid]}
+    fi
+    
+    # ============================================
+    # HOME DIRECTORY STATISTICS
+    # ============================================
+    
+    # Collect home directory sizes
+    local home_sizes=()
+    local total_home_bytes=0
+    
+    while IFS=: read -r username _ uid _ _ home _; do
+        is_regular_user "$uid" || continue
+        if [ -d "$home" ]; then
+            local size=$(du -sb "$home" 2>/dev/null | cut -f1)
+            [ -n "$size" ] && home_sizes+=("$size")
+            [ -n "$size" ] && total_home_bytes=$((total_home_bytes + size))
+        fi
+    done < /etc/passwd
+    
+    # Calculate home size statistics
+    local home_count=${#home_sizes[@]}
+    local home_min=0
+    local home_max=0
+    local home_avg=0
+    
+    if [ "$home_count" -gt 0 ]; then
+        home_min=${home_sizes[0]}
+        home_max=${home_sizes[0]}
+        
+        for size in "${home_sizes[@]}"; do
+            [ "$size" -lt "$home_min" ] && home_min=$size
+            [ "$size" -gt "$home_max" ] && home_max=$size
+        done
+        
+        home_avg=$((total_home_bytes / home_count))
+    fi
+    
+    # Convert to human-readable (MB)
+    local total_home_mb=$((total_home_bytes / 1048576))
+    local home_avg_mb=$((home_avg / 1048576))
+    local home_min_mb=$((home_min / 1048576))
+    local home_max_mb=$((home_max / 1048576))
+    
+    # ============================================
+    # GROUP STATISTICS
+    # ============================================
+    
+    # Collect group member counts
+    local member_counts=()
+    local empty_groups=0
+    local single_member_groups=0
+    local large_groups=0  # >10 members
+    
+    while IFS=: read -r groupname _ gid members; do
+        [ "$gid" -lt "$min_gid" ] && continue
+        
+        local member_count=0
+        if [ -n "$members" ]; then
+            member_count=$(echo "$members" | tr ',' '\n' | wc -l)
+        fi
+        
+        member_counts+=("$member_count")
+        
+        [ "$member_count" -eq 0 ] && ((empty_groups++))
+        [ "$member_count" -eq 1 ] && ((single_member_groups++))
+        [ "$member_count" -gt 10 ] && ((large_groups++))
+        
+    done < /etc/group
+    
+    # Calculate member count statistics
+    local group_count=${#member_counts[@]}
+    local member_sum=0
+    local member_max=0
+    
+    for count in "${member_counts[@]}"; do
+        member_sum=$((member_sum + count))
+        [ "$count" -gt "$member_max" ] && member_max=$count
+    done
+    
+    local member_avg=0
+    [ "$group_count" -gt 0 ] && member_avg=$((member_sum / group_count))
+    
+    # ============================================
+    # SHELL DISTRIBUTION
+    # ============================================
+    
+    local bash_count=0
+    local sh_count=0
+    local zsh_count=0
+    local nologin_count=0
+    local other_shell_count=0
+    
+    while IFS=: read -r username _ uid _ _ _ shell; do
+        is_regular_user "$uid" || continue
+        
+        case "$shell" in
+            /bin/bash) ((bash_count++)) ;;
+            /bin/sh) ((sh_count++)) ;;
+            /bin/zsh|/usr/bin/zsh) ((zsh_count++)) ;;
+            *nologin*|*false*) ((nologin_count++)) ;;
+            *) ((other_shell_count++)) ;;
+        esac
+    done < /etc/passwd
+    
+    # ============================================
+    # LOGIN STATISTICS
+    # ============================================
+    
+    local never_logged_in=0
+    local logged_in_last_day=0
+    local logged_in_last_week=0
+    local logged_in_last_month=0
+    local inactive_users=0  # >90 days
+    
+    local one_day_ago=$(date -d "1 day ago" +%s 2>/dev/null || echo $(($(date +%s) - 86400)))
+    local one_week_ago=$(date -d "7 days ago" +%s 2>/dev/null || echo $(($(date +%s) - 604800)))
+    local one_month_ago=$(date -d "30 days ago" +%s 2>/dev/null || echo $(($(date +%s) - 2592000)))
+    local ninety_days_ago=$(date -d "90 days ago" +%s 2>/dev/null || echo $(($(date +%s) - 7776000)))
+    
+    while IFS=: read -r username _ uid _; do
+        is_regular_user "$uid" || continue
+        
+        local last_login=$(get_last_login "$username")
+        
+        if [ "$last_login" = "Never" ]; then
+            ((never_logged_in++))
+            ((inactive_users++))
+        else
+            local login_timestamp=$(date -d "$last_login" +%s 2>/dev/null)
+            
+            if [ -n "$login_timestamp" ]; then
+                [ "$login_timestamp" -gt "$one_day_ago" ] && ((logged_in_last_day++))
+                [ "$login_timestamp" -gt "$one_week_ago" ] && ((logged_in_last_week++))
+                [ "$login_timestamp" -gt "$one_month_ago" ] && ((logged_in_last_month++))
+                [ "$login_timestamp" -lt "$ninety_days_ago" ] && ((inactive_users++))
+            fi
+        fi
+    done < /etc/passwd
+    
+    # ============================================
+    # PASSWORD POLICY COMPLIANCE
+    # ============================================
+    
+    local pwd_never_expires=0
+    local pwd_expires_30=0
+    local pwd_expires_60=0
+    local pwd_expires_90=0
+    local pwd_expires_custom=0
+    
+    while IFS=: read -r username _ uid _; do
+        is_regular_user "$uid" || continue
+        
+        local max_days=$(sudo chage -l "$username" 2>/dev/null | grep "Maximum number of days" | grep -oE '[0-9]+')
+        
+        if [ "$max_days" = "99999" ] || [ -z "$max_days" ]; then
+            ((pwd_never_expires++))
+        elif [ "$max_days" -le 30 ]; then
+            ((pwd_expires_30++))
+        elif [ "$max_days" -le 60 ]; then
+            ((pwd_expires_60++))
+        elif [ "$max_days" -le 90 ]; then
+            ((pwd_expires_90++))
+        else
+            ((pwd_expires_custom++))
+        fi
+    done < /etc/passwd
+    
+    # ============================================
+    # ACTIVE PROCESSES & RESOURCES
+    # ============================================
+    
+    local users_with_processes=0
+    local total_user_processes=0
+    local users_with_cron=0
+    local total_cron_jobs=0
+    
+    while IFS=: read -r username _ uid _; do
+        is_regular_user "$uid" || continue
+        
+        local proc_count=$(($(count_user_processes "$username") - 1))
+        [ "$proc_count" -lt 0 ] && proc_count=0
+        
+        if [ "$proc_count" -gt 0 ]; then
+            ((users_with_processes++))
+            total_user_processes=$((total_user_processes + proc_count))
+        fi
+        
+        local cron_count=$(count_user_cron_jobs "$username")
+        if [ "$cron_count" -gt 0 ]; then
+            ((users_with_cron++))
+            total_cron_jobs=$((total_cron_jobs + cron_count))
+        fi
+    done < /etc/passwd
+    
+    # ============================================
+    # BUILD RESULT STRING
+    # ============================================
+    
+    echo "uid_min=$uid_min|uid_max=$uid_max|uid_avg=$uid_avg|uid_median=$uid_median|total_home_mb=$total_home_mb|home_avg_mb=$home_avg_mb|home_min_mb=$home_min_mb|home_max_mb=$home_max_mb|empty_groups=$empty_groups|single_member_groups=$single_member_groups|large_groups=$large_groups|member_avg=$member_avg|member_max=$member_max|bash_users=$bash_count|sh_users=$sh_count|zsh_users=$zsh_count|nologin_users=$nologin_count|other_shell_users=$other_shell_count|never_logged_in=$never_logged_in|logged_in_last_day=$logged_in_last_day|logged_in_last_week=$logged_in_last_week|logged_in_last_month=$logged_in_last_month|inactive_users=$inactive_users|pwd_never_expires=$pwd_never_expires|pwd_expires_30=$pwd_expires_30|pwd_expires_60=$pwd_expires_60|pwd_expires_90=$pwd_expires_90|pwd_expires_custom=$pwd_expires_custom|users_with_processes=$users_with_processes|total_user_processes=$total_user_processes|users_with_cron=$users_with_cron|total_cron_jobs=$total_cron_jobs"
+}

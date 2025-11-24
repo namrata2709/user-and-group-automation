@@ -539,6 +539,7 @@ Help: Adding Users
 
 USAGE:
   sudo ./user.sh --add user --names <file> [OPTIONS]
+  sudo ./user.sh --add user --input <file.json> --format json [OPTIONS]
 
 FILE FORMAT (users.txt):
   username:comment:expiry:shell:sudo:password
@@ -547,6 +548,23 @@ FILE FORMAT (users.txt):
     alice:Alice Smith:90:a:yes:
     bob:Bob Jones::d:no:random
     charlie:::a::MyP@ss123
+
+FILE FORMAT (users.json):
+{
+  "users": [
+    {
+      "username": "alice",
+      "comment": "Alice Smith",
+      "groups": ["developers", "sudo"],
+      "shell": "/bin/bash",
+      "expire_days": 365,
+      "password_policy": {
+        "type": "random",
+        "expiry_days": 90
+      }
+    }
+  ]
+}
 
 OPTIONS:
   --dry-run            Test without changes
@@ -563,6 +581,7 @@ PASSWORD OPTIONS:
 
 EXAMPLES:
   sudo ./user.sh --add user --names users.txt
+  sudo ./user.sh --add user --input users.json --format json
   sudo ./user.sh --add user --names users.txt --password random
   sudo ./user.sh --add user --names users.txt --dry-run
   sudo ./user.sh --add user --names users.txt --sudo

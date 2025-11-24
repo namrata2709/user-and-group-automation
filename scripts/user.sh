@@ -69,10 +69,13 @@ export ICON_SUCCESS ICON_ERROR ICON_WARNING ICON_INFO ICON_USER ICON_GROUP
 export ICON_LOCK ICON_UNLOCK ICON_DELETE ICON_BACKUP ICON_SEARCH
 
 # ============ LOAD MODULES ==================
-source "$LIB_DIR/logging.sh"
-source "$LIB_DIR/validation.sh"
-source "$LIB_DIR/helpers.sh"
-source "$LIB_DIR/config_validation.sh"
+source_if_exists "$SCRIPTS_DIR/lib/helpers.sh" "Helpers"
+source_if_exists "$SCRIPTS_DIR/lib/logging.sh" "Logging"
+source_if_exists "$SCRIPTS_DIR/lib/output_helpers.sh" "Output Helpers"
+source_if_exists "$SCRIPTS_DIR/lib/config_validation.sh" "Config Validation"
+source_if_exists "$SCRIPTS_DIR/lib/validation.sh" "Input Validation"
+source_if_exists "$SCRIPTS_DIR/lib/user_add.sh" "User Add"
+
 source "$LIB_DIR/help.sh"
 source "$LIB_DIR/json.sh"
 source "$LIB_DIR/view.sh"
@@ -80,7 +83,6 @@ source "$LIB_DIR/view_json.sh"
 source "$LIB_DIR/report.sh"
 source "$LIB_DIR/report_json.sh"
 source "$LIB_DIR/json_input.sh"
-source "$LIB_DIR/user_add.sh"
 source "$LIB_DIR/user_delete.sh"
 source "$LIB_DIR/user_update.sh"
 source "$LIB_DIR/user_lock.sh"

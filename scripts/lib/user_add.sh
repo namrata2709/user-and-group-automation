@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# ================================================
+# ===============================================
 # User Add Module - REFACTORED
-# Version: 2.0.0
-# ================================================
+# Version: 2.1.0
+# ===============================================
 # Single add_user logic, multiple format parsers
-# ================================================
+# ===============================================
 
-# ============================================
+# ===========================================
 # CORE FUNCTION - Single user creation logic
-# ============================================
+# ===========================================
 # add_single_user()
 # Creates a single user with given parameters
 # Args:
@@ -164,9 +164,9 @@ add_single_user() {
     fi
 }
 
-# ============================================
+# ===========================================
 # PARSER: Text File Format
-# ============================================
+# ===========================================
 # parse_users_from_text()
 # Parses text file and calls add_single_user for each
 # Format: username:comment:expiry:shell:sudo:password
@@ -216,20 +216,14 @@ parse_users_from_text() {
         echo ""
     done < "$user_file"
     
-    echo "=========================================="
-    echo "Summary:"
-    echo "  Total processed: $count"
-    echo "  Created: $created"
-    echo "  Skipped: $skipped"
-    echo "  Failed: $failed"
-    echo "=========================================="
+    print_operation_summary "$count" "Created" "$created" "$skipped" "$failed"
     
     return 0
 }
 
-# ============================================
+# ===========================================
 # PARSER: JSON Format
-# ============================================
+# ===========================================
 # parse_users_from_json()
 # Parses JSON file and calls add_single_user for each
 # Args:
@@ -271,11 +265,11 @@ parse_users_from_json() {
         # Extract fields from JSON
         local username=$(echo "$user_json" | jq -r '.username')
         local comment=$(echo "$user_json" | jq -r '.comment // ""')
-        local groups=$(echo "$user_json" | jq -r '.groups[]?' 2>/dev/null | paste -sd,)
-        local shell=$(echo "$user_json" | jq -r '.shell // "/bin/bash"')
-        local expire_days=$(echo "$user_json" | jq -r '.expire_days // "0"')
+        local groups=$(echo "$user_json" | jq -r '.groups[]?' 2>/dev/null | paste -sd, | sed 's/,$//')
+        local shell=$(echo "$user_json" | jq -r ".shell // \"$GLOBAL_SHELL\"")
+        local expire_days=$(echo "$user_json" | jq -r ".expire_days // \"$GLOBAL_EXPIRE\"")
         local password_type=$(echo "$user_json" | jq -r '.password_policy.type // "default"')
-        local password_expiry=$(echo "$user_json" | jq -r '.password_policy.expiry_days // "90"')
+        local password_expiry=$(echo "$user_json" | jq -r ".password_policy.expiry_days // \"$GLOBAL_PASSWORD_EXPIRY\"")
         
         # Determine password
         local password="$DEFAULT_PASSWORD"
@@ -283,9 +277,17 @@ parse_users_from_json() {
             password="random"
         fi
         
-        # Determine sudo (not in JSON, use global default)
+        # Determine sudo access, respecting JSON property then global flag
+        local sudo_from_json
+        sudo_from_json=$(echo "$user_json" | jq -r '.sudo // "default"')
         local sudo="no"
-        [ "$GLOBAL_SUDO" = true ] && sudo="yes"
+        if [[ "$sudo_from_json" == "true" ]]; then
+            sudo="yes"
+        elif [[ "$sudo_from_json" == "false" ]]; then
+            sudo="no"
+        elif [[ "$GLOBAL_SUDO" == true ]]; then
+            sudo="yes"
+        fi
         
         # Call core function
         if add_single_user "$username" "$comment" "$expire_days" "$shell" "$sudo" "$password" "$password_expiry" "$groups"; then
@@ -303,21 +305,14 @@ parse_users_from_json() {
     local end_time=$(date +%s)
     local duration=$((end_time - start_time))
     
-    echo "=========================================="
-    echo "Summary:"
-    echo "  Total processed: $count"
-    echo "  Created: $created"
-    echo "  Skipped: $skipped"
-    echo "  Failed: $failed"
-    echo "  Duration: ${duration}s"
-    echo "=========================================="
+    print_operation_summary "$count" "Created" "$created" "$skipped" "$failed" "$duration"
     
     return 0
 }
 
-# ============================================
+# ===========================================
 # PUBLIC INTERFACE - Called from user.sh
-# ============================================
+# ===========================================
 # add_users()
 # Main entry point - detects format and routes to appropriate parser
 # Args:
@@ -343,17 +338,8 @@ add_users() {
         fi
     fi
     
-    echo "=========================================="
-    echo "Adding Users from: $user_file"
-    echo "Format: $format"
-    [ "$DRY_RUN" = true ] && echo "${ICON_SEARCH} DRY-RUN MODE"
-    [ -n "$GLOBAL_EXPIRE" ] && echo "📅 Global Expiration: $GLOBAL_EXPIRE days"
-    [ -n "$GLOBAL_SHELL" ] && echo "🐚 Global Shell: $GLOBAL_SHELL"
-    [ "$GLOBAL_SUDO" = true ] && echo "🔐 Global Sudo: enabled"
-    [ "$GLOBAL_PASSWORD" = "random" ] && echo "🔑 Global Password: random (unique per user)"
-    [ -n "$GLOBAL_PASSWORD_EXPIRY" ] && echo "⏱️  Password expiry: $GLOBAL_PASSWORD_EXPIRY days"
-    echo "=========================================="
-    echo ""
+    # Use the new shared banner function
+    print_add_user_banner "$user_file" "$format"
     
     # Route to appropriate parser
     case "$format" in
@@ -371,20 +357,20 @@ add_users() {
     esac
 }
 
-# ============================================
+# ===========================================
 # LEGACY COMPATIBILITY
-# ============================================
+# ===========================================
 # Keep old function names for backward compatibility
 add_users_from_json() {
     parse_users_from_json "$1"
 }
 
-# ============================================
+# ===========================================
 # USER-GROUP PROVISIONING - REFACTORED
-# ============================================
+# ===========================================
 # Uses add_single_group() and add_single_user() core functions
 # Supports all add_user arguments for new users
-# ============================================
+# ===========================================
 
 # provision_users_and_groups()
 # Parses user-group mapping file and creates users/groups as needed
@@ -494,27 +480,23 @@ provision_users_and_groups() {
         echo ""
     done < "$mapping_file"
     
-    echo "=========================================="
-    echo "Summary:"
-    echo "  Groups processed: $groups_processed"
-    echo "  Groups created: $groups_created"
+    print_operation_summary "$groups_processed" "Groups Created" "$groups_created" "0" "$failed"
+
     echo "  Users added to groups: $users_added"
     echo "  Users created: $users_created"
-    echo "  Failed operations: $failed"
-    echo "=========================================="
     
     return 0
 }
 
-# ============================================
+# ===========================================
 # PUBLIC INTERFACE
-# ============================================
+# ===========================================
 # NEW NAME: provision_users_with_groups (better describes what it does)
 # OLD NAME: add_users_to_groups (kept for backward compatibility)
 provision_users_with_groups() {
     local mapping_file="$1"
     
-    echo "=========================================="
+    echo "============================================"
     echo "User-Group Provisioning from: $mapping_file"
     [ "$DRY_RUN" = true ] && echo "${ICON_SEARCH} DRY-RUN MODE"
     [ -n "$GLOBAL_EXPIRE" ] && echo "📅 New users expire in: $GLOBAL_EXPIRE days"
@@ -522,7 +504,7 @@ provision_users_with_groups() {
     [ "$GLOBAL_SUDO" = true ] && echo "🔐 New users sudo: enabled"
     [ "$GLOBAL_PASSWORD" = "random" ] && echo "🔑 New users password: random"
     [ -n "$GLOBAL_PASSWORD_EXPIRY" ] && echo "⏱️  Password expiry: $GLOBAL_PASSWORD_EXPIRY days"
-    echo "=========================================="
+    echo "============================================"
     echo ""
     
     provision_users_and_groups "$mapping_file"

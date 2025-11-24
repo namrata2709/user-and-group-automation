@@ -26,6 +26,51 @@ print_add_user_banner() {
     echo ""
 }
 
+# print_lock_user_banner()
+# Prints a banner for the user lock operation
+# Args:
+#   $1 - Target (file or username)
+#   $2 - Format of the file
+#   $3 - Global reason for lock
+print_lock_user_banner() {
+    local target="$1"
+    local format="$2"
+    local reason="$3"
+
+    echo "============================================"
+    if [ -f "$target" ]; then
+        echo "Locking Users from: $target"
+        echo "Format: $format"
+    else
+        echo "Locking User: $target"
+    fi
+    [ "$DRY_RUN" = true ] && echo "${ICON_SEARCH} DRY-RUN MODE"
+    [ -n "$reason" ] && [ "$reason" != "No reason provided" ] && echo "Reason: $reason"
+    echo "============================================"
+    echo ""
+}
+
+# print_unlock_user_banner()
+# Prints a banner for the user unlock operation
+# Args:
+#   $1 - Target (file or username)
+#   $2 - Format of the file
+print_unlock_user_banner() {
+    local target="$1"
+    local format="$2"
+
+    echo "============================================"
+    if [ -f "$target" ]; then
+        echo "Unlocking Users from: $target"
+        echo "Format: $format"
+    else
+        echo "Unlocking User: $target"
+    fi
+    [ "$DRY_RUN" = true ] && echo "${ICON_SEARCH} DRY-RUN MODE"
+    echo "============================================"
+    echo ""
+}
+
 # print_operation_summary()
 # Prints a standardized summary for a script operation
 # Args:
@@ -52,3 +97,4 @@ print_operation_summary() {
     [ -n "$duration" ] && printf "  %-15s %s\\n" "Duration:" "${duration}s"
     echo "============================================"
 }
+

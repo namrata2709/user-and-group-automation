@@ -625,33 +625,15 @@ execute_operation() {
             ;;
             
         --lock)
-            if [ -n "$USERNAME" ]; then
-                lock_user "$USERNAME" "$LOCK_REASON"
-            elif [ -n "$FILE" ]; then
-                if [ "$JSON_INPUT" = true ]; then
-                    lock_users "$FILE" "json" "$LOCK_REASON"
-                else
-                    lock_users "$FILE" "text" "$LOCK_REASON"
-                fi
-            else
-                echo "${ICON_ERROR} Missing --name <username> or --names <file>"
-                exit 1
-            fi
+            local target="${USERNAME:-$FILE}"
+            [ -z "$target" ] && { echo "${ICON_ERROR} Missing --name <username> or --names <file>"; exit 1; }
+            lock_users "$target" "$INPUT_FORMAT" "$LOCK_REASON"
             ;;
             
         --unlock)
-            if [ -n "$USERNAME" ]; then
-                unlock_user "$USERNAME"
-            elif [ -n "$FILE" ]; then
-                if [ "$JSON_INPUT" = true ]; then
-                    unlock_users "$FILE" "json"
-                else
-                    unlock_users "$FILE" "text"
-                fi
-            else
-                echo "${ICON_ERROR} Missing --name <username> or --names <file>"
-                exit 1
-            fi
+            local target="${USERNAME:-$FILE}"
+            [ -z "$target" ] && { echo "${ICON_ERROR} Missing --name <username> or --names <file>"; exit 1; }
+            unlock_users "$target" "$INPUT_FORMAT"
             ;;
             
         --update)

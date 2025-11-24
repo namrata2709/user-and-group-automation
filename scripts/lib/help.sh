@@ -619,6 +619,64 @@ EXAMPLES:
 ========================================
 EOF
             ;;
+        lock|lock-user)
+            cat <<'EOF'
+========================================
+Help: Locking Users
+========================================
+
+USAGE:
+  sudo ./user.sh --lock --name <username> [OPTIONS]
+  sudo ./user.sh --lock --input <file.json> --format json [OPTIONS]
+
+OPTIONS:
+  --reason <text>      Reason for locking the account
+
+FILE FORMAT (lock.json):
+{
+  "users": [
+    {
+      "username": "alice",
+      "reason": "Security investigation"
+    },
+    {
+      "username": "bob"
+    }
+  ]
+}
+
+EXAMPLES:
+  sudo ./user.sh --lock --name mallory --reason "Suspicious activity"
+  sudo ./user.sh --lock --input lock_users.json --format json
+
+========================================
+EOF
+            ;;
+        unlock|unlock-user)
+            cat <<'EOF'
+========================================
+Help: Unlocking Users
+========================================
+
+USAGE:
+  sudo ./user.sh --unlock --name <username>
+  sudo ./user.sh --unlock --input <file.json> --format json
+
+FILE FORMAT (unlock.json):
+{
+  "users": [
+    { "username": "alice" },
+    { "username": "bob" }
+  ]
+}
+
+EXAMPLES:
+  sudo ./user.sh --unlock --name alice
+  sudo ./user.sh --unlock --input unlock_users.json --format json
+
+========================================
+EOF
+            ;;
         update)
             cat <<'EOF'
 ========================================

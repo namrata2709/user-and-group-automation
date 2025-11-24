@@ -11,7 +11,7 @@ User and Group Management Script
 ========================================
 
 USAGE:
-  sudo ./user.sh [OPERATION] [ACTION] [OPTIONS]
+  sudo ./main.sh [OPERATION] [ACTION] [OPTIONS]
 
 OPERATIONS:
   --add          Add users or groups
@@ -42,29 +42,30 @@ COMMON OPTIONS:
 
 EXAMPLES:
   # Add users from a text file
-  sudo ./user.sh --add user --names users.txt
+  sudo ./main.sh --add user --names users.txt
 
   # Add groups from a JSON file
-  sudo ./user.sh --add group --input groups.json
+  sudo ./main.sh --add group --input groups.json
 
   # Delete a single user interactively
-  sudo ./user.sh --delete user --name alice
+  sudo ./main.sh --delete user --name alice
 
   # Lock a user with a reason
-  sudo ./user.sh --lock --name bob --reason "Security review"
+  sudo ./main.sh --lock --name bob --reason "Security review"
 
   # View all users in JSON format
-  sudo ./user.sh --view users --json
+  sudo ./main.sh --view users --json
 
   # Generate a security report
-  sudo ./user.sh --report security
+  sudo ./main.sh --report security
 
 DETAILED HELP:
-  ./user.sh --help add
-  ./user.sh --help delete
-  ./user.sh --help lock
-  ./user.sh --help json
-  ./user.sh --help roles
+  ./main.sh --help add
+  ./main.sh --help delete
+  ./main.sh --help lock
+  ./main.sh --help view
+  ./main.sh --help json
+  ./main.sh --help roles
 
 CONFIG: /opt/admin_dashboard/config/user_mgmt.conf
 LOG: /var/log/user_mgmt.log
@@ -86,13 +87,13 @@ JSON INPUT (--input <file>)
 Use a JSON file to add or delete users and groups in bulk.
 
   # Add users from a JSON file
-  sudo ./user.sh --add user --input users.json
+  sudo ./main.sh --add user --input users.json
 
   # Add groups from a JSON file
-  sudo ./user.sh --add group --input groups.json
+  sudo ./main.sh --add group --input groups.json
 
   # Delete groups from a JSON file
-  sudo ./user.sh --delete group --input groups_to_delete.json
+  sudo ./main.sh --delete group --input groups_to_delete.json
 
 JSON FILE FORMATS:
 
@@ -119,7 +120,7 @@ JSON FILE FORMATS:
     ]
   }
 
-  (See './user.sh --help add' and './user.sh --help delete' for more examples)
+  (See './main.sh --help add' and './main.sh --help delete' for more examples)
 
 ----------------------------------------
 JSON OUTPUT (--json)
@@ -127,13 +128,13 @@ JSON OUTPUT (--json)
 Get machine-readable output for viewing, searching, and reporting.
 
   # View all users in JSON
-  sudo ./user.sh --view users --json
+  sudo ./main.sh --view users --json
 
   # Search for users with 'dev' in their name
-  sudo ./user.sh --search users --pattern "dev" --json
+  sudo ./main.sh --search users --pattern "dev" --json
 
   # Get a security report in JSON
-  sudo ./user.sh --report security --json | jq
+  sudo ./main.sh --report security --json | jq
 
 ========================================
 EOF
@@ -150,7 +151,7 @@ OVERVIEW:
   to users. This is ideal for standardizing user setups.
 
 USAGE:
-  sudo ./user.sh --apply-roles <roles.json>
+  sudo ./main.sh --apply-roles <roles.json>
 
 FILE STRUCTURE:
 {
@@ -173,7 +174,7 @@ WORKFLOW:
   2. If a user in 'assignments' does not exist, they will be created.
   3. If a user exists, their account will be updated to match the role settings.
 
-  sudo ./user.sh --apply-roles roles.json
+  sudo ./main.sh --apply-roles roles.json
 
 BENEFITS:
   - Ensures consistent permissions for users in the same role.
@@ -223,6 +224,59 @@ VALIDATION:
 EOF
 }
 
+show_view_help() {
+    cat <<'EOF'
+========================================
+Help: --view
+========================================
+
+Displays detailed information about users, groups, and system resources.
+
+USAGE:
+  sudo ./main.sh --view <TARGET> [OPTIONS]
+
+TARGETS:
+  users          View a list of users.
+  groups         View a list of groups.
+  user <name>    View detailed information for a single user.
+  group <name>   View detailed information for a single group.
+  system         View a summary of system user and group statistics.
+
+OPTIONS FOR `users` and `groups`:
+
+  --filter <f>   Filter results. Examples:
+                 - users: 'active', 'locked', 'sudo', 'inactive:90' (days)
+                 - groups: 'empty', 'large'
+  --search <p>   Search by name with a pattern (e.g., 'dev*').
+  --sort <by>    Sort results. 
+                 - users: 'username', 'uid', 'home-size'
+                 - groups: 'groupname', 'gid', 'member-count'
+  --limit <n>    Limit the number of results.
+  --skip <n>     Skip a number of results for pagination.
+  --columns <c>  Comma-separated list of columns to display.
+  --json         Output in JSON format.
+
+EXAMPLES:
+
+  # View all active users with sudo access
+  sudo ./main.sh --view users --filter 'active,sudo'
+
+  # View top 5 largest home directories
+  sudo ./main.sh --view users --sort 'home-size' --limit 5
+
+  # View details for a specific user
+  sudo ./main.sh --view user alice
+
+  # View all empty groups in JSON format
+  sudo ./main.sh --view groups --filter 'empty' --json
+
+  # View a detailed system summary
+  sudo ./main.sh --view system --detailed
+
+========================================
+EOF
+}
+
 show_specific_help() {
     local topic="$1"
     case "$topic" in
@@ -234,6 +288,9 @@ show_specific_help() {
             ;;
         config|configuration)
             show_config_help
+            ;;
+        view|view-*)
+            show_view_help
             ;;
         add|add-*)
             cat <<'EOF'
@@ -248,9 +305,9 @@ ADD USER
 ----------------------------------------
 
 USAGE:
-  sudo ./user.sh --add user --name <username> [OPTIONS]
-  sudo ./user.sh --add user --names <file.txt>
-  sudo ./user.sh --add user --input <file.json>
+  sudo ./main.sh --add user --name <username> [OPTIONS]
+  sudo ./main.sh --add user --names <file.txt>
+  sudo ./main.sh --add user --input <file.json>
 
 OPTIONS:
   --comment <text>     Set the user's full name or description.
@@ -279,9 +336,9 @@ ADD GROUP
 ----------------------------------------
 
 USAGE:
-  sudo ./user.sh --add group --name <groupname>
-  sudo ./user.sh --add group --names <file.txt>
-  sudo ./user.sh --add group --input <file.json>
+  sudo ./main.sh --add group --name <groupname>
+  sudo ./main.sh --add group --names <file.txt>
+  sudo ./main.sh --add group --input <file.json>
 
 TEXT FILE FORMAT (--names):
   Each line contains one group name.
@@ -313,9 +370,9 @@ DELETE USER
 ----------------------------------------
 
 USAGE:
-  sudo ./user.sh --delete user --name <username> [MODE]
-  sudo ./user.sh --delete user --names <file.txt>
-  sudo ./user.sh --delete user --input <file.json>
+  sudo ./main.sh --delete user --name <username> [MODE]
+  sudo ./main.sh --delete user --names <file.txt>
+  sudo ./main.sh --delete user --input <file.json>
 
 MODES (for single user deletion):
   --check        Perform a dry-run and show potential issues.
@@ -339,9 +396,9 @@ DELETE GROUP
 ----------------------------------------
 
 USAGE:
-  sudo ./user.sh --delete group --name <groupname>
-  sudo ./user.sh --delete group --names <file.txt>
-  sudo ./user.sh --delete group --input <file.json>
+  sudo ./main.sh --delete group --name <groupname>
+  sudo ./main.sh --delete group --names <file.txt>
+  sudo ./main.sh --delete group --input <file.json>
 
 NOTE: By default, groups are deleted automatically. System groups (GID < 1000)
 and groups that are the primary group for any user cannot be deleted.
@@ -366,8 +423,8 @@ Help: --lock
 Locks a user account, preventing them from logging in.
 
 USAGE:
-  sudo ./user.sh --lock --name <username> [OPTIONS]
-  sudo ./user.sh --lock --input <file.json>
+  sudo ./main.sh --lock --name <username> [OPTIONS]
+  sudo ./main.sh --lock --input <file.json>
 
 OPTIONS:
   --reason <text>  Record a reason for the lock in the audit log.
@@ -395,8 +452,8 @@ Help: --unlock
 Unlocks a user account, allowing them to log in again.
 
 USAGE:
-  sudo ./user.sh --unlock --name <username>
-  sudo ./user.sh --unlock --input <file.json>
+  sudo ./main.sh --unlock --name <username>
+  sudo ./main.sh --unlock --input <file.json>
 
 JSON FILE FORMAT (--input):
 {

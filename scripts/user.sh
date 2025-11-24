@@ -90,6 +90,8 @@ source "$LIB_DIR/group_add.sh"
 source "$LIB_DIR/group_delete.sh"
 source "$LIB_DIR/group_update.sh"
 source "$LIB_DIR/export.sh"
+source "$LIB_DIR/export.sh"
+source "$LIB_DIR/compliance.sh"
 
 # Load expression parser if exists (v2.0.0 feature)
 [ -f "$LIB_DIR/expression_parser.sh" ] && source "$LIB_DIR/expression_parser.sh"
@@ -208,8 +210,8 @@ parse_arguments() {
                 echo "Build: $BUILD_DATE"
                 exit 0
                 ;;
-                
-            --add|--delete|--lock|--unlock|--update|--view|--search|--report|--export|--apply-roles|--manage-groups)
+            
+            --add|--delete|--lock|--unlock|--update|--view|--search|--report|--export|--apply-roles|--manage-groups|--compliance)
                 OPERATION="$1"
                 shift
                 ;;
@@ -872,6 +874,10 @@ execute_operation() {
         --manage-groups)
             [ -z "$FILE" ] && { echo "${ICON_ERROR} Missing groups file"; exit 1; }
             manage_groups_from_json "$FILE"
+            ;;
+
+        --compliance)
+            run_all_compliance_checks
             ;;
             
         --export)

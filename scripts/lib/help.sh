@@ -277,6 +277,42 @@ EXAMPLES:
 EOF
 }
 
+
+# ---
+# Function: show_compliance_help()
+# Description: Displays detailed help for the --compliance operation.
+# ---
+show_compliance_help() {
+    echo "Usage: user.sh --compliance"
+    echo ""
+    echo "The --compliance operation runs a series of automated checks to validate"
+    echo "system users and groups against a predefined set of security and"
+    echo "consistency rules."
+    echo ""
+    echo "Description:"
+    echo "  This command scans all regular users and groups, reporting any"
+    echo "  violations found. It is useful for periodic security audits and"
+    echo "  maintaining system health."
+    echo ""
+    echo "Checks Performed:"
+    echo "  Users:"
+    echo "    - Password Expiry: Ensures passwords expire within 90 days."
+    echo "    - Account Expiry: Checks for expired user accounts."
+    echo "    - Inactive Accounts: Flags users inactive for over 90 days."
+    echo "    - Sudo Password Policy: Enforces a 30-day password expiry for sudo users."
+    echo "    - Service Account Shell: Verifies service accounts have a non-login shell."
+    echo ""
+    echo "  Groups:"
+    echo "    - Empty Groups: Identifies groups with no members that are not a primary group for any user."
+    echo "    - Orphaned Primary Groups: Checks for groups assigned as a primary group to non-existent users."
+    echo ""
+    echo "Examples:"
+    echo "  Run all compliance checks:"
+    echo "    sudo ./user.sh --compliance"
+    echo ""
+}
+
+
 show_specific_help() {
     local topic="$1"
     case "$topic" in
@@ -291,6 +327,9 @@ show_specific_help() {
             ;;
         view|view-*)
             show_view_help
+            ;;
+        compliance) 
+            show_compliance_help 
             ;;
         add|add-*)
             cat <<'EOF'

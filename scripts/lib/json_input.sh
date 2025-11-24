@@ -1,18 +1,15 @@
 #!/usr/bin/env bash
 # ================================================
-# JSON Input Processing Module - UPDATED
-# Version: 2.0.0
+# JSON Input Processing Module - REFACTORED
+# Version: 2.1.0
 # ================================================
-# UPDATED: Uses core add_single_user() and add_single_group()
+# This file now only contains role-based and user deletion functions.
+# Group management is handled in group_add.sh and group_delete.sh
 # ================================================
-
-# NOTE: add_users_from_json is now in user_add.sh as parse_users_from_json()
-# This file now only contains role-based and group management functions
 
 # ============================================
 # apply_roles_from_json()
 # ============================================
-# UPDATED: Uses add_single_user() core function
 # Applies role-based configurations from JSON
 # Args:
 #   $1 - JSON file path
@@ -48,10 +45,10 @@ apply_roles_from_json() {
         return 1
     fi
     
-    echo "=========================================="
+    echo "============================================"
     echo "Applying Roles from: $json_file"
     [ "$DRY_RUN" = true ] && echo "${ICON_SEARCH} DRY-RUN MODE"
-    echo "=========================================="
+    echo "============================================"
     echo ""
     
     local success_count=0
@@ -66,7 +63,7 @@ apply_roles_from_json() {
         echo "Processing: $username (role: $role)"
         
         # Get role definition
-        local role_def=$(jq -c ".roles.\"$role\"" "$json_file" 2>/dev/null)
+        local role_def=$(jq -c ".roles.\\\"$role\\\"" "$json_file" 2>/dev/null)
         
         if [ "$role_def" = "null" ] || [ -z "$role_def" ]; then
             echo "  ${ICON_ERROR} Role '$role' not found in JSON"
@@ -122,140 +119,7 @@ apply_roles_from_json() {
     local end_time=$(date +%s)
     local duration=$((end_time - start_time))
     
-    echo "=========================================="
-    echo "Summary:"
-    echo "  Total processed: $((success_count + failed_count))"
-    echo "  Success: $success_count"
-    echo "  Failed: $failed_count"
-    echo "  Duration: ${duration}s"
-    echo "=========================================="
-    
-    return 0
-}
-
-# ============================================
-# manage_groups_from_json()
-# ============================================
-# UPDATED: Uses add_single_group() and handles delete separately
-# Manages groups from a JSON file
-# Args:
-#   $1 - JSON file path
-# Returns:
-#   Summary of operations
-manage_groups_from_json() {
-    local json_file="$1"
-    
-    if [ ! -f "$json_file" ]; then
-        echo "${ICON_ERROR} JSON file not found: $json_file"
-        return 1
-    fi
-    
-    if ! command -v jq &> /dev/null; then
-        echo "${ICON_ERROR} jq required. Install with: sudo apt install jq"
-        return 1
-    fi
-    
-    # Validate JSON syntax
-    if ! jq empty "$json_file" 2>/dev/null; then
-        echo "${ICON_ERROR} Invalid JSON format: $json_file"
-        return 1
-    fi
-    
-    # Validate JSON structure
-    if ! jq -e '.groups' "$json_file" >/dev/null 2>&1; then
-        echo "${ICON_ERROR} Invalid JSON structure - missing 'groups' array"
-        return 1
-    fi
-    
-    echo "=========================================="
-    echo "Managing Groups from: $json_file"
-    [ "$DRY_RUN" = true ] && echo "${ICON_SEARCH} DRY-RUN MODE"
-    echo "=========================================="
-    echo ""
-    
-    local created_count=0
-    local deleted_count=0
-    local failed_count=0
-    local skipped_count=0
-    local start_time=$(date +%s)
-    
-    # Parse each group operation
-    while IFS= read -r group_data; do
-        local name=$(echo "$group_data" | jq -r '.name')
-        local action=$(echo "$group_data" | jq -r '.action')
-        local members=$(echo "$group_data" | jq -r '.members[]?' 2>/dev/null | paste -sd,)
-        
-        echo "Processing: $name (action: $action)"
-        
-        case "$action" in
-            create)
-                # UPDATED: Use core function from group_add.sh
-                if add_single_group "$name" "$members"; then
-                    ((created_count++))
-                else
-                    if getent group "$name" >/dev/null 2>&1; then
-                        ((skipped_count++))
-                    else
-                        ((failed_count++))
-                    fi
-                fi
-                ;;
-                
-            delete)
-                if ! getent group "$name" >/dev/null 2>&1; then
-                    echo "  ${ICON_WARNING} Group '$name' does not exist"
-                    ((skipped_count++))
-                    echo ""
-                    continue
-                fi
-                
-                # Check if it's a system group
-                local gid=$(getent group "$name" | cut -d: -f3)
-                local min_gid="${MIN_GROUP_GID:-1000}"
-                
-                if [ "$gid" -lt "$min_gid" ]; then
-                    echo "  ${ICON_ERROR} Cannot delete system group (GID < $min_gid)"
-                    ((failed_count++))
-                    echo ""
-                    continue
-                fi
-                
-                if [ "$DRY_RUN" = true ]; then
-                    echo "  ${ICON_SEARCH} [DRY-RUN] Would delete group: $name"
-                    ((deleted_count++))
-                else
-                    # Delete group
-                    if sudo groupdel "$name" 2>/dev/null; then
-                        echo "  ${ICON_SUCCESS} Group deleted"
-                        log_action "delete_group_json" "$name" "SUCCESS" ""
-                        ((deleted_count++))
-                    else
-                        echo "  ${ICON_ERROR} Failed to delete group"
-                        ((failed_count++))
-                    fi
-                fi
-                ;;
-                
-            *)
-                echo "  ${ICON_ERROR} Unknown action: $action"
-                ((failed_count++))
-                ;;
-        esac
-        
-        echo ""
-    done < <(jq -c '.groups[]' "$json_file" 2>/dev/null)
-    
-    local end_time=$(date +%s)
-    local duration=$((end_time - start_time))
-    
-    echo "=========================================="
-    echo "Summary:"
-    echo "  Groups created: $created_count"
-    echo "  Groups deleted: $deleted_count"
-    echo "  Skipped: $skipped_count"
-    echo "  Failed: $failed_count"
-    echo "  Duration: ${duration}s"
-    echo "=========================================="
+    print_operation_summary "$((success_count + failed_count))" "Applied" "$success_count" "0" "$failed_count" "$duration"
     
     return 0
 }
@@ -263,7 +127,6 @@ manage_groups_from_json() {
 # ============================================
 # delete_users_from_json()
 # ============================================
-# NOTE: This remains unchanged as it uses delete operations
 # Deletes users from a JSON file
 # Args:
 #   $1 - JSON file path
@@ -294,10 +157,10 @@ delete_users_from_json() {
         return 1
     fi
     
-    echo "=========================================="
+    echo "============================================"
     echo "Deleting Users from: $json_file"
     [ "$DRY_RUN" = true ] && echo "${ICON_SEARCH} DRY-RUN MODE"
-    echo "=========================================="
+    echo "============================================"
     echo ""
     
     local success_count=0
@@ -377,13 +240,7 @@ delete_users_from_json() {
     local end_time=$(date +%s)
     local duration=$((end_time - start_time))
     
-    echo "=========================================="
-    echo "Summary:"
-    echo "  Total processed: $((success_count + failed_count))"
-    echo "  Success: $success_count"
-    echo "  Failed: $failed_count"
-    echo "  Duration: ${duration}s"
-    echo "=========================================="
+    print_operation_summary "$((success_count + failed_count))" "Deleted" "$success_count" "0" "$failed_count" "$duration"
     
     return 0
 }

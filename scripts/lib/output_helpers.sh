@@ -26,6 +26,23 @@ print_add_user_banner() {
     echo ""
 }
 
+# print_add_group_banner()
+# Prints a banner for the group add operation
+# Args:
+#   $1 - File being processed
+#   $2 - Format of the file
+print_add_group_banner() {
+    local group_file="$1"
+    local format="$2"
+
+    echo "============================================"
+    echo "Adding Groups from: $group_file"
+    echo "Format: $format"
+    [ "$DRY_RUN" = true ] && echo "${ICON_SEARCH} DRY-RUN MODE"
+    echo "============================================"
+    echo ""
+}
+
 # print_lock_user_banner()
 # Prints a banner for the user lock operation
 # Args:
@@ -70,6 +87,58 @@ print_unlock_user_banner() {
     echo "============================================"
     echo ""
 }
+# print_delete_group_banner()
+# Prints a banner for the group delete operation
+# Args:
+#   $1 - File being processed
+#   $2 - Format of the file
+print_delete_group_banner() {
+    local group_file="$1"
+    local format="$2"
+
+    echo "============================================"
+    echo "Deleting Groups from: $group_file"
+    echo "Format: $format"
+    [ "$DRY_RUN" = true ] && echo "${ICON_SEARCH} DRY-RUN MODE"
+    echo "============================================"
+    echo ""
+}
+
+# print_delete_user_banner()
+# Prints a banner for the user delete operation
+# Args:
+#   $1 - File being processed
+#   $2 - Format of the file
+print_delete_user_banner() {
+    local user_file="$1"
+    local format="$2"
+
+    echo "============================================"
+    echo "Deleting Users from: $user_file"
+    echo "Format: $format"
+    [ "$DRY_RUN" = true ] && echo "${ICON_SEARCH} DRY-RUN MODE"
+    echo "============================================"
+    echo ""
+}
+# print_provisioning_banner()
+# Prints a banner for the user-group provisioning operation
+# Args:
+#   $1 - Mapping file being processed
+print_provisioning_banner() {
+    local mapping_file="$1"
+
+    echo "============================================"
+    echo "User-Group Provisioning from: $mapping_file"
+    [ "$DRY_RUN" = true ] && echo "${ICON_SEARCH} DRY-RUN MODE"
+    [ -n "$GLOBAL_EXPIRE" ] && echo "📅 New users expire in: $GLOBAL_EXPIRE days"
+    [ -n "$GLOBAL_SHELL" ] && echo "🐚 New users shell: $GLOBAL_SHELL"
+    [ "$GLOBAL_SUDO" = true ] && echo "🔐 New users sudo: enabled"
+    [ "$GLOBAL_PASSWORD" = "random" ] && echo "🔑 New users password: random"
+    [ -n "$GLOBAL_PASSWORD_EXPIRY" ] && echo "⏱️  Password expiry: $GLOBAL_PASSWORD_EXPIRY days"
+    echo "============================================"
+    echo ""
+}
+
 
 # print_operation_summary()
 # Prints a standardized summary for a script operation
@@ -97,4 +166,3 @@ print_operation_summary() {
     [ -n "$duration" ] && printf "  %-15s %s\\n" "Duration:" "${duration}s"
     echo "============================================"
 }
-

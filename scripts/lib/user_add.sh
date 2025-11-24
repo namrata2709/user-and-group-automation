@@ -496,16 +496,7 @@ provision_users_and_groups() {
 provision_users_with_groups() {
     local mapping_file="$1"
     
-    echo "============================================"
-    echo "User-Group Provisioning from: $mapping_file"
-    [ "$DRY_RUN" = true ] && echo "${ICON_SEARCH} DRY-RUN MODE"
-    [ -n "$GLOBAL_EXPIRE" ] && echo "📅 New users expire in: $GLOBAL_EXPIRE days"
-    [ -n "$GLOBAL_SHELL" ] && echo "🐚 New users shell: $GLOBAL_SHELL"
-    [ "$GLOBAL_SUDO" = true ] && echo "🔐 New users sudo: enabled"
-    [ "$GLOBAL_PASSWORD" = "random" ] && echo "🔑 New users password: random"
-    [ -n "$GLOBAL_PASSWORD_EXPIRY" ] && echo "⏱️  Password expiry: $GLOBAL_PASSWORD_EXPIRY days"
-    echo "============================================"
-    echo ""
+    print_provisioning_banner "$mapping_file"
     
     provision_users_and_groups "$mapping_file"
 }

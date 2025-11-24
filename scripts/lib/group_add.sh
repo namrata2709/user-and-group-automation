@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ================================================
 # Group Add Module - REFACTORED
-# Version: 2.0.0
+# Version: 2.1.0
 # ================================================
 # Single add_group logic, multiple format parsers
 # ================================================
@@ -9,43 +9,31 @@
 # ============================================
 # CORE FUNCTION - Single group creation logic
 # ============================================
-# add_single_group()
-# Creates a single group with given parameters
-# Args:
-#   $1 - groupname (required)
-#   $2 - members (comma-separated usernames, optional)
-# Returns:
-#   0 on success, 1 on failure
 add_single_group() {
     local groupname="$1"
     local members="${2:-}"
     
-    # Validate groupname
     if ! validate_name "$groupname" "group"; then
         log_action "add_group" "$groupname" "FAILED" "Invalid groupname"
         return 1
     fi
     
-    # Check if group already exists
     if getent group "$groupname" >/dev/null 2>&1; then
         echo "${ICON_WARNING} Group '$groupname' already exists. Skipping..."
         log_action "add_group" "$groupname" "SKIPPED" "Already exists"
         return 1
     fi
     
-    # DRY-RUN mode
     if [ "$DRY_RUN" = true ]; then
         echo "${ICON_SEARCH} [DRY-RUN] Would create group: $groupname"
         [ -n "$members" ] && echo "   - Members: $members"
         return 0
     fi
     
-    # Create group
     echo "${ICON_GROUP} Creating group: $groupname"
     if sudo groupadd "$groupname" 2>/dev/null; then
         echo "   ${ICON_SUCCESS} Group created"
         
-        # Add members if specified
         if [ -n "$members" ]; then
             local success=0
             local failed=0
@@ -54,14 +42,12 @@ add_single_group() {
             for member in "${member_array[@]}"; do
                 member=$(echo "$member" | xargs)
                 
-                # Check if user exists
                 if ! id "$member" &>/dev/null; then
                     echo "   ${ICON_WARNING} User '$member' does not exist, skipping"
                     ((failed++))
                     continue
                 fi
                 
-                # Add user to group
                 if sudo usermod -aG "$groupname" "$member" 2>/dev/null; then
                     echo "   ${ICON_SUCCESS} Added member: $member"
                     ((success++))
@@ -92,13 +78,6 @@ add_single_group() {
 # ============================================
 # PARSER: Text File Format
 # ============================================
-# parse_groups_from_text()
-# Parses text file and calls add_single_group for each
-# Format: groupname
-# Args:
-#   $1 - text file path
-# Returns:
-#   Summary counts
 parse_groups_from_text() {
     local group_file="$1"
     
@@ -110,7 +89,6 @@ parse_groups_from_text() {
     local count=0 created=0 skipped=0 failed=0
     
     while IFS= read -r line || [ -n "$line" ]; do
-        # Skip comments and empty lines
         [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
         line=$(echo "$line" | sed 's/#.*$//' | xargs)
         [ -z "$line" ] && continue
@@ -118,7 +96,6 @@ parse_groups_from_text() {
         local groupname="$line"
         count=$((count + 1))
         
-        # Call core function
         if add_single_group "$groupname" ""; then
             ((created++))
         else
@@ -131,13 +108,7 @@ parse_groups_from_text() {
         echo ""
     done < "$group_file"
     
-    echo "=========================================="
-    echo "Summary:"
-    echo "  Total processed: $count"
-    echo "  Created: $created"
-    echo "  Skipped: $skipped"
-    echo "  Failed: $failed"
-    echo "=========================================="
+    print_operation_summary "$count" "Created" "$created" "$skipped" "$failed"
     
     return 0
 }
@@ -145,32 +116,19 @@ parse_groups_from_text() {
 # ============================================
 # PARSER: JSON Format
 # ============================================
-# parse_groups_from_json()
-# Parses JSON file and calls add_single_group for each
-# Args:
-#   $1 - JSON file path
-# Returns:
-#   Summary counts
 parse_groups_from_json() {
     local json_file="$1"
-    
-    if [ ! -f "$json_file" ]; then
-        echo "${ICON_ERROR} JSON file not found: $json_file"
-        return 1
-    fi
     
     if ! command -v jq &> /dev/null; then
         echo "${ICON_ERROR} jq not installed. Install with: sudo apt install jq"
         return 1
     fi
     
-    # Validate JSON syntax
     if ! jq empty "$json_file" 2>/dev/null; then
         echo "${ICON_ERROR} Invalid JSON format: $json_file"
         return 1
     fi
     
-    # Validate JSON structure
     if ! jq -e '.groups' "$json_file" >/dev/null 2>&1; then
         echo "${ICON_ERROR} Invalid JSON structure - missing 'groups' array"
         return 1
@@ -179,24 +137,19 @@ parse_groups_from_json() {
     local count=0 created=0 skipped=0 failed=0
     local start_time=$(date +%s)
     
-    # Parse each group from JSON
     while IFS= read -r group_json; do
         ((count++))
         
-        # Extract fields from JSON
         local groupname=$(echo "$group_json" | jq -r '.name')
         local action=$(echo "$group_json" | jq -r '.action // "create"')
-        local members=$(echo "$group_json" | jq -r '.members[]?' 2>/dev/null | paste -sd,)
+        local members=$(echo "$group_json" | jq -r '.members[]?' 2>/dev/null | paste -sd, | sed 's/,$//')
         
-        # Only process 'create' actions in this function
-        # 'delete' actions are handled by group_delete.sh
         if [ "$action" != "create" ]; then
             echo "${ICON_WARNING} Skipping group '$groupname' - action is '$action' (not 'create')"
             ((skipped++))
             continue
         fi
         
-        # Call core function
         if add_single_group "$groupname" "$members"; then
             ((created++))
         else
@@ -212,14 +165,7 @@ parse_groups_from_json() {
     local end_time=$(date +%s)
     local duration=$((end_time - start_time))
     
-    echo "=========================================="
-    echo "Summary:"
-    echo "  Total processed: $count"
-    echo "  Created: $created"
-    echo "  Skipped: $skipped"
-    echo "  Failed: $failed"
-    echo "  Duration: ${duration}s"
-    echo "=========================================="
+    print_operation_summary "$count" "Created" "$created" "$skipped" "$failed" "$duration"
     
     return 0
 }
@@ -227,13 +173,6 @@ parse_groups_from_json() {
 # ============================================
 # PUBLIC INTERFACE - Called from user.sh
 # ============================================
-# add_groups()
-# Main entry point - detects format and routes to appropriate parser
-# Args:
-#   $1 - file path
-#   $2 - format (optional: "text", "json", auto-detect if not provided)
-# Returns:
-#   0 on success, 1 on failure
 add_groups() {
     local group_file="$1"
     local format="${2:-auto}"
@@ -243,7 +182,6 @@ add_groups() {
         return 1
     fi
     
-    # Auto-detect format if not specified
     if [ "$format" = "auto" ]; then
         if [[ "$group_file" =~ \.json$ ]]; then
             format="json"
@@ -252,14 +190,8 @@ add_groups() {
         fi
     fi
     
-    echo "=========================================="
-    echo "Adding Groups from: $group_file"
-    echo "Format: $format"
-    [ "$DRY_RUN" = true ] && echo "${ICON_SEARCH} DRY-RUN MODE"
-    echo "=========================================="
-    echo ""
+    print_add_group_banner "$group_file" "$format"
     
-    # Route to appropriate parser
     case "$format" in
         json)
             parse_groups_from_json "$group_file"

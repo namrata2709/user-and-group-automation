@@ -1,179 +1,121 @@
 #!/usr/bin/env bash
-# ===============================================
-# User Add Module - REFACTORED
-# Version: 2.1.0
-# ===============================================
-# Single add_user logic, multiple format parsers
-# ===============================================
 
-# ===========================================
-# CORE FUNCTION - Single user creation logic
-# ===========================================
-# add_single_user()
-# Creates a single user with given parameters
-# Args:
-#   $1 - username (required)
-#   $2 - comment/GECOS (optional)
-#   $3 - expiry_days (optional, 0=never)
-#   $4 - shell (optional, default from config)
-#   $5 - sudo (yes/no, optional)
-#   $6 - password (optional, "random" or specific password)
-#   $7 - password_expiry_days (optional, default from config)
-#   $8 - groups (comma-separated, optional)
-# Returns:
-#   0 on success, 1 on failure
+# =================================================================================================
+#
+# User Addition Module
+#
+# Description:
+#   This module handles all aspects of user creation. It provides a core function for adding
+#   a single user, along with parsers for adding users in bulk from text or JSON files. It also
+#   includes functionality for provisioning users and assigning them to groups simultaneously.
+#
+#   The module is designed to be called from the main 'user.sh' script and relies on global
+#   variables for default settings (e.g., shell, password policies).
+#
+# =================================================================================================
+
+# =================================================================================================
+# FUNCTION: add_single_user
+# DESCRIPTION:
+#   The core function for creating a single new user account. It validates input, constructs
+#   the 'useradd' command, executes it, and sets the user's password if provided.
+#
+# PARAMETERS:
+#   $1 - username: The username for the new user.
+#   $2 - password: The user's password. Can be a plaintext string or "RANDOM" to generate one.
+#   $3 - primary_group: The primary group for the user.
+#   $4 - secondary_groups: A comma-separated string of secondary groups.
+#   $5 - full_name: The user's full name or comment (GECOS field).
+#   $6 - home_dir: The path to the user's home directory.
+#   $7 - shell: The user's login shell.
+#   $8 - extra_opts: Any additional options to pass directly to the 'useradd' command.
+#
+# RETURNS:
+#   0 if the user is created successfully.
+#   1 if there is a failure (e.g., user exists, group not found, command fails).
+#   Returns 1 for partial success (e.g., user created but password setting fails).
+# =================================================================================================
 add_single_user() {
     local username="$1"
-    local comment="${2:-}"
-    local expiry_days="${3:-0}"
-    local shell="${4:-$DEFAULT_SHELL}"
-    local sudo_access="${5:-no}"
-    local password="${6:-$DEFAULT_PASSWORD}"
-    local password_expiry="${7:-${PASSWORD_EXPIRY_DAYS:-90}}"
-    local groups="${8:-}"
-    
-    # Validate username
-    if ! validate_name "$username" "user"; then
-        log_action "add_user" "$username" "FAILED" "Invalid username"
+    local password="$2"
+    local primary_group="$3"
+    local secondary_groups="$4"
+    local full_name="$5"
+    local home_dir="$6"
+    local shell="$7"
+    local extra_opts="$8"
+
+    # --- Validation ---
+    if is_reserved_user "$username"; then
+        log_action "ERROR" "User creation failed: '$username' is a reserved username."
         return 1
     fi
-    
-    # Check if user already exists
+
     if id "$username" &>/dev/null; then
-        echo "${ICON_WARNING} User '$username' already exists. Skipping..."
-        log_action "add_user" "$username" "SKIPPED" "Already exists"
+        log_action "ERROR" "User creation failed: User '$username' already exists."
         return 1
     fi
-    
-    # Normalize shell
-    if ! validate_shell "$shell"; then
-        log_action "add_user" "$username" "FAILED" "Invalid shell: $shell"
+
+    if [ -n "$primary_group" ] && ! getent group "$primary_group" &>/dev/null; then
+        log_action "ERROR" "User creation failed for '$username': Primary group '$primary_group' does not exist."
         return 1
     fi
-    shell=$(normalize_shell "$shell")
-    
-    # Normalize sudo
-    sudo_access=$(normalize_sudo "$sudo_access")
-    
-    # DRY-RUN mode
-    if [ "$DRY_RUN" = true ]; then
-        echo "${ICON_SEARCH} [DRY-RUN] Would create user: $username"
-        [ -n "$comment" ] && echo "   - Comment: $comment"
-        echo "   - Home: /home/$username"
-        echo "   - Shell: $shell"
-        [ "$expiry_days" -gt 0 ] && echo "   - Account expires: $(date -d "+${expiry_days} days" +%Y-%m-%d)"
-        [ "$sudo_access" = "yes" ] && echo "   - Sudo: enabled"
-        [ "$password" = "random" ] && echo "   - Password: random (unique)"
-        [ -n "$groups" ] && echo "   - Groups: $groups"
-        echo "   - Password expires: $password_expiry days"
-        return 0
-    fi
-    
-    # Create user
-    echo "${ICON_USER} Creating user: $username"
-    
-    local useradd_opts="-m -s $shell"
-    [ -n "$comment" ] && useradd_opts="$useradd_opts -c \"$comment\""
-    
-    if eval sudo useradd $useradd_opts "$username" 2>/dev/null; then
-        echo "   ${ICON_SUCCESS} User created"
-        
-        # Set password
-        local user_password="$DEFAULT_PASSWORD"
-        local is_random=false
-        
-        if [ "$password" = "random" ]; then
-            user_password=$(generate_random_password "${PASSWORD_LENGTH:-16}")
-            is_random=true
-            echo "   🔑 Random password: $user_password"
-        elif [ -n "$password" ] && [ "$password" != "$DEFAULT_PASSWORD" ]; then
-            user_password="$password"
-            echo "   🔐 Custom password set"
-        else
-            echo "   🔐 Default password set"
-        fi
-        
-        echo "$username:$user_password" | sudo chpasswd 2>/dev/null
-        
-        # Force password change on first login
-        sudo chage -d 0 "$username"
-        echo "   🔄 Must change password on first login"
-        
-        # Set password expiry
-        local pwd_warn="${PASSWORD_WARN_DAYS:-7}"
-        sudo chage -M "$password_expiry" -W "$pwd_warn" "$username"
-        echo "   ⏱️  Password expires every: $password_expiry days"
-        
-        # Set account expiry
-        if [ "$expiry_days" -gt 0 ]; then
-            local expiry_date=$(date -d "+${expiry_days} days" +%Y-%m-%d)
-            sudo chage -E "$expiry_date" "$username"
-            echo "   📅 Account expires: $expiry_date"
-        fi
-        
-        # Add to groups
-        if [ -n "$groups" ]; then
-            sudo usermod -aG "$groups" "$username" 2>/dev/null
-            echo "   👥 Added to groups: $groups"
-        fi
-        
-        # Add to sudo group
-        if [ "$sudo_access" = "yes" ]; then
-            sudo usermod -aG sudo "$username" 2>/dev/null || \
-            sudo usermod -aG wheel "$username" 2>/dev/null
-            echo "   🔐 Sudo access: granted"
-        fi
-        
-        # Display other info
-        [ -n "$comment" ] && echo "   💬 Comment: $comment"
-        echo "   🐚 Shell: $shell"
-        
-        # Save random password to secure file
-        if [ "$is_random" = true ]; then
-            local password_dir="${BACKUP_DIR}/passwords"
-            sudo mkdir -p "$password_dir"
-            sudo chmod 700 "$password_dir"
+
+    # --- Build useradd command ---
+    local cmd="sudo useradd"
+    local opts=()
+
+    [ -n "$primary_group" ] && opts+=("-g" "$primary_group")
+    [ -n "$secondary_groups" ] && opts+=("-G" "$secondary_groups")
+    [ -n "$full_name" ] && opts+=("-c" "\"$full_name\"")
+    [ -n "$home_dir" ] && opts+=("-d" "$home_dir")
+    [ -n "$shell" ] && opts+=("-s" "$shell")
+    [ -n "$extra_opts" ] && opts+=($extra_opts)
+
+    # --- Execute useradd ---
+    log_action "INFO" "Attempting to create user '$username'..."
+    if eval "$cmd ${opts[*]} '$username'"; then
+        log_action "SUCCESS" "User '$username' created successfully."
+
+        # --- Set password if provided ---
+        if [ -n "$password" ]; then
+            if [[ "$password" == "RANDOM" ]]; then
+                password=$(generate_random_password)
+                log_action "INFO" "Generated random password for '$username'."
+                echo "$username:$password" >> "new_user_passwords.txt"
+            fi
             
-            local timestamp=$(date '+%Y%m%d_%H%M%S')
-            local password_file="$password_dir/${username}_${timestamp}.txt"
-            
-            {
-                echo "User Creation - Random Password"
-                echo "================================"
-                echo "User: $username"
-                echo "Date: $(date)"
-                echo "Created By: $USER"
-                echo "Password: $user_password"
-                echo ""
-                echo "User must change on first login"
-                echo ""
-                echo "⚠️  DELETE THIS FILE after password is delivered"
-            } | sudo tee "$password_file" >/dev/null
-            
-            sudo chmod 600 "$password_file"
-            echo "   📄 Password saved: $password_file"
+            if ! echo "$username:$password" | sudo chpasswd; then
+                log_action "ERROR" "Failed to set password for user '$username'. The user was created, but password setting failed."
+                return 1 # Partial success
+            else
+                log_action "INFO" "Password set for user '$username'."
+            fi
         fi
-        
-        local uid=$(id -u "$username")
-        log_action "add_user" "$username" "SUCCESS" "shell=$shell, sudo=$sudo_access, random_pwd=$is_random, groups=$groups"
         return 0
     else
-        echo "   ${ICON_ERROR} Failed to create user: $username"
-        log_action "add_user" "$username" "FAILED" "useradd command failed"
+        log_action "ERROR" "Failed to create user '$username'."
         return 1
     fi
 }
 
-# ===========================================
-# PARSER: Text File Format
-# ===========================================
-# parse_users_from_text()
-# Parses text file and calls add_single_user for each
-# Format: username:comment:expiry:shell:sudo:password
-# Args:
-#   $1 - text file path
-# Returns:
-#   Summary counts
+# =================================================================================================
+# FUNCTION: parse_users_from_text
+# DESCRIPTION:
+#   Parses a text file to add multiple users. It reads the file line by line, extracts user
+#   attributes, and calls 'add_single_user' for each entry.
+#
+# INPUT FORMAT (TEXT):
+#   Each line should be in the format:
+#   username:comment:expiry:shell:sudo:password
+#   - Lines starting with '#' are ignored.
+#
+# PARAMETERS:
+#   $1 - user_file: The absolute path to the text file containing user data.
+#
+# RETURNS:
+#   0 on completion. Prints a summary of the operation.
+# =================================================================================================
 parse_users_from_text() {
     local user_file="$1"
     
@@ -204,7 +146,7 @@ parse_users_from_text() {
         [ -z "$password" ] && [ "$GLOBAL_PASSWORD" = "random" ] && password="random"
         
         # Call core function
-        if add_single_user "$username" "$comment" "$expiry" "$shell" "$sudo" "$password" "$GLOBAL_PASSWORD_EXPIRY" ""; then
+        if add_single_user "$username" "$password" "" "" "$comment" "" "$shell" ""; then
             ((created++))
         else
             if id "$username" &>/dev/null 2>&1; then
@@ -221,15 +163,34 @@ parse_users_from_text() {
     return 0
 }
 
-# ===========================================
-# PARSER: JSON Format
-# ===========================================
-# parse_users_from_json()
-# Parses JSON file and calls add_single_user for each
-# Args:
-#   $1 - JSON file path
-# Returns:
-#   Summary counts
+# =================================================================================================
+# FUNCTION: parse_users_from_json
+# DESCRIPTION:
+#   Parses a JSON file to add multiple users. It uses 'jq' to process an array of user
+#   objects and calls 'add_single_user' for each. This function is intended for machine-readable
+#   input and does not produce JSON output itself, but rather executes system actions.
+#
+# INPUT FORMAT (JSON):
+#   A JSON object with a top-level "users" array. Each object in the array represents a user.
+#   {
+#     "users": [
+#       {
+#         "username": "jdoe",
+#         "comment": "John Doe",
+#         "groups": ["developers", "testers"],
+#         "shell": "/bin/bash",
+#         ...
+#       }
+#     ]
+#   }
+#
+# PARAMETERS:
+#   $1 - json_file: The absolute path to the JSON file.
+#
+# RETURNS:
+#   0 on completion. Prints a summary of the operation.
+#   1 if 'jq' is not installed or the JSON is invalid.
+# =================================================================================================
 parse_users_from_json() {
     local json_file="$1"
     
@@ -239,58 +200,34 @@ parse_users_from_json() {
     fi
     
     if ! command -v jq &> /dev/null; then
-        echo "${ICON_ERROR} jq not installed. Install with: sudo apt install jq"
+        echo "${ICON_ERROR} 'jq' is not installed. Please install it to process JSON files."
         return 1
     fi
     
-    # Validate JSON syntax
-    if ! jq empty "$json_file" 2>/dev/null; then
-        echo "${ICON_ERROR} Invalid JSON format: $json_file"
-        return 1
-    fi
-    
-    # Validate JSON structure
+    # Validate JSON syntax and structure
     if ! jq -e '.users' "$json_file" >/dev/null 2>&1; then
-        echo "${ICON_ERROR} Invalid JSON structure - missing 'users' array"
+        echo "${ICON_ERROR} Invalid JSON structure. The file must contain a 'users' array."
         return 1
     fi
     
     local count=0 created=0 skipped=0 failed=0
     local start_time=$(date +%s)
     
-    # Parse each user from JSON
+    # Process each user object from the 'users' array
     while IFS= read -r user_json; do
         ((count++))
         
-        # Extract fields from JSON
+        # Extract fields from JSON, providing defaults where necessary
         local username=$(echo "$user_json" | jq -r '.username')
-        local comment=$(echo "$user_json" | jq -r '.comment // ""')
-        local groups=$(echo "$user_json" | jq -r '.groups[]?' 2>/dev/null | paste -sd, | sed 's/,$//')
+        local full_name=$(echo "$user_json" | jq -r '.comment // ""')
+        local primary_group=$(echo "$user_json" | jq -r '.primary_group // ""')
+        local secondary_groups=$(echo "$user_json" | jq -r '(.secondary_groups // []) | join(",")')
         local shell=$(echo "$user_json" | jq -r ".shell // \"$GLOBAL_SHELL\"")
-        local expire_days=$(echo "$user_json" | jq -r ".expire_days // \"$GLOBAL_EXPIRE\"")
-        local password_type=$(echo "$user_json" | jq -r '.password_policy.type // "default"')
-        local password_expiry=$(echo "$user_json" | jq -r ".password_policy.expiry_days // \"$GLOBAL_PASSWORD_EXPIRY\"")
-        
-        # Determine password
-        local password="$DEFAULT_PASSWORD"
-        if [ "$password_type" = "random" ]; then
-            password="random"
-        fi
-        
-        # Determine sudo access, respecting JSON property then global flag
-        local sudo_from_json
-        sudo_from_json=$(echo "$user_json" | jq -r '.sudo // "default"')
-        local sudo="no"
-        if [[ "$sudo_from_json" == "true" ]]; then
-            sudo="yes"
-        elif [[ "$sudo_from_json" == "false" ]]; then
-            sudo="no"
-        elif [[ "$GLOBAL_SUDO" == true ]]; then
-            sudo="yes"
-        fi
-        
-        # Call core function
-        if add_single_user "$username" "$comment" "$expire_days" "$shell" "$sudo" "$password" "$password_expiry" "$groups"; then
+        local home_dir=$(echo "$user_json" | jq -r '.home_dir // ""')
+        local password=$(echo "$user_json" | jq -r '.password // "RANDOM"')
+
+        # Call core function with extracted data
+        if add_single_user "$username" "$password" "$primary_group" "$secondary_groups" "$full_name" "$home_dir" "$shell" ""; then
             ((created++))
         else
             if id "$username" &>/dev/null 2>&1; then
@@ -310,16 +247,19 @@ parse_users_from_json() {
     return 0
 }
 
-# ===========================================
-# PUBLIC INTERFACE - Called from user.sh
-# ===========================================
-# add_users()
-# Main entry point - detects format and routes to appropriate parser
-# Args:
-#   $1 - file path
-#   $2 - format (optional: "text", "json", auto-detect if not provided)
-# Returns:
-#   0 on success, 1 on failure
+# =================================================================================================
+# FUNCTION: add_users
+# DESCRIPTION:
+#   The main public entry point for the user addition feature. It detects the input file
+#   format (text or JSON) and routes to the appropriate parser function.
+#
+# PARAMETERS:
+#   $1 - user_file: The path to the input file.
+#   $2 - format: (Optional) The format of the file ("text" or "json"). Auto-detects if omitted.
+#
+# RETURNS:
+#   0 on success, 1 on failure.
+# =================================================================================================
 add_users() {
     local user_file="$1"
     local format="${2:-auto}"
@@ -329,7 +269,7 @@ add_users() {
         return 1
     fi
     
-    # Auto-detect format if not specified
+    # Auto-detect format based on file extension if not specified
     if [ "$format" = "auto" ]; then
         if [[ "$user_file" =~ \.json$ ]]; then
             format="json"
@@ -338,10 +278,9 @@ add_users() {
         fi
     fi
     
-    # Use the new shared banner function
     print_add_user_banner "$user_file" "$format"
     
-    # Route to appropriate parser
+    # Route to the correct parser
     case "$format" in
         json)
             parse_users_from_json "$user_file"
@@ -350,38 +289,29 @@ add_users() {
             parse_users_from_text "$user_file"
             ;;
         *)
-            echo "${ICON_ERROR} Unknown format: $format"
-            echo "Supported formats: text, json"
+            echo "${ICON_ERROR} Unknown format: $format. Supported formats: text, json."
             return 1
             ;;
     esac
 }
 
-# ===========================================
-# LEGACY COMPATIBILITY
-# ===========================================
-# Keep old function names for backward compatibility
-add_users_from_json() {
-    parse_users_from_json "$1"
-}
-
-# ===========================================
-# USER-GROUP PROVISIONING - REFACTORED
-# ===========================================
-# Uses add_single_group() and add_single_user() core functions
-# Supports all add_user arguments for new users
-# ===========================================
-
-# provision_users_and_groups()
-# Parses user-group mapping file and creates users/groups as needed
-# Format: groupname:user1 user2 user3
-# Args:
-#   $1 - mapping file path
-# Returns:
-#   Summary counts
-# Notes:
-#   - Uses GLOBAL_* variables for new user defaults (expire, shell, sudo, password, etc.)
-#   - Existing users are just added to groups
+# =================================================================================================
+# FUNCTION: provision_users_and_groups
+# DESCRIPTION:
+#   Provisions users and groups from a mapping file. It creates groups if they don't exist,
+#   creates users if they don't exist (using global defaults), and adds existing or new
+#   users to their specified groups.
+#
+# INPUT FORMAT:
+#   Each line should be in the format:
+#   groupname:user1 user2 user3
+#
+# PARAMETERS:
+#   $1 - mapping_file: The path to the user-group mapping file.
+#
+# RETURNS:
+#   0 on completion. Prints a summary of the operation.
+# =================================================================================================
 provision_users_and_groups() {
     local mapping_file="$1"
     
@@ -390,11 +320,7 @@ provision_users_and_groups() {
         return 1
     fi
     
-    local groups_processed=0
-    local groups_created=0
-    local users_added=0
-    local users_created=0
-    local failed=0
+    local groups_processed=0 groups_created=0 users_added=0 users_created=0 failed=0
     
     while IFS= read -r line || [ -n "$line" ]; do
         # Skip comments and empty lines
@@ -402,17 +328,15 @@ provision_users_and_groups() {
         line=$(echo "$line" | sed 's/#.*$//' | xargs)
         [ -z "$line" ] && continue
         
-        # Parse: groupname:user1 user2 user3
         local group=$(echo "$line" | cut -d':' -f1 | xargs)
         local users=$(echo "$line" | cut -d':' -f2 | xargs)
         
         if [[ -z "$group" || -z "$users" ]]; then
-            echo "${ICON_WARNING} Invalid format: $line"
+            echo "${ICON_WARNING} Invalid format, skipping line: $line"
             ((failed++))
             continue
         fi
         
-        # Validate group name
         if ! validate_name "$group" "group"; then
             ((failed++))
             continue
@@ -421,20 +345,20 @@ provision_users_and_groups() {
         ((groups_processed++))
         echo "Processing group: $group"
         
-        # Create group if doesn't exist - USE CORE FUNCTION
+        # Create group if it doesn't exist
         if ! getent group "$group" >/dev/null 2>&1; then
             if add_single_group "$group" ""; then
                 ((groups_created++))
             else
-                echo "  ${ICON_ERROR} Failed to create group, skipping users"
+                echo "  ${ICON_ERROR} Failed to create group, skipping users in this group."
                 ((failed++))
                 continue
             fi
         else
-            echo "  ${ICON_INFO} Group already exists"
+            echo "  ${ICON_INFO} Group '$group' already exists."
         fi
         
-        # Process each user
+        # Process each user for the current group
         for user in $users; do
             if ! validate_name "$user" "user"; then
                 ((failed++))
@@ -442,34 +366,24 @@ provision_users_and_groups() {
             fi
             
             if id "$user" &>/dev/null; then
-                # User exists, add to group
-                if [ "$DRY_RUN" = true ]; then
-                    echo "  ${ICON_SEARCH} [DRY-RUN] Would add '$user' to '$group'"
+                # User exists, just add to the group
+                echo "  ${ICON_USER} Adding existing user '$user' to group '$group'..."
+                if sudo usermod -aG "$group" "$user" 2>/dev/null; then
                     ((users_added++))
+                    log_action "provision_add_to_group" "$user" "SUCCESS" "Added to group: $group"
                 else
-                    echo "  ${ICON_USER} Adding '$user' to '$group'"
-                    if sudo usermod -aG "$group" "$user" 2>/dev/null; then
-                        ((users_added++))
-                        log_action "provision_add_to_group" "$user" "SUCCESS" "Added to group: $group"
-                    else
-                        echo "  ${ICON_ERROR} Failed to add '$user' to '$group'"
-                        ((failed++))
-                    fi
+                    echo "  ${ICON_ERROR} Failed to add '$user' to '$group'."
+                    ((failed++))
                 fi
             else
-                # User doesn't exist, create with GLOBAL settings
-                echo "  ${ICON_INFO} User '$user' doesn't exist, creating with defaults..."
+                # User doesn't exist, create them with default settings
+                echo "  ${ICON_INFO} User '$user' not found. Creating with default settings..."
                 
-                # Use GLOBAL variables if set, otherwise use defaults
-                local user_shell="${GLOBAL_SHELL:-$DEFAULT_SHELL}"
-                local user_expiry="${GLOBAL_EXPIRE:-0}"
-                local user_sudo="no"
-                [ "$GLOBAL_SUDO" = true ] && user_sudo="yes"
-                local user_password="${GLOBAL_PASSWORD:-$DEFAULT_PASSWORD}"
-                local user_pwd_expiry="${GLOBAL_PASSWORD_EXPIRY:-${PASSWORD_EXPIRY_DAYS:-90}}"
+                local user_shell="${GLOBAL_SHELL:-/bin/bash}"
+                local user_password="${GLOBAL_PASSWORD:-RANDOM}"
                 
-                # Create user with primary group + additional group from mapping
-                if add_single_user "$user" "" "$user_expiry" "$user_shell" "$user_sudo" "$user_password" "$user_pwd_expiry" "$group"; then
+                # Create user and add them to the group in one step
+                if add_single_user "$user" "$user_password" "" "$group" "" "" "$user_shell" ""; then
                     ((users_created++))
                     ((users_added++))
                 else
@@ -481,27 +395,26 @@ provision_users_and_groups() {
     done < "$mapping_file"
     
     print_operation_summary "$groups_processed" "Groups Created" "$groups_created" "0" "$failed"
-
     echo "  Users added to groups: $users_added"
-    echo "  Users created: $users_created"
+    echo "  New users created: $users_created"
     
     return 0
 }
 
-# ===========================================
-# PUBLIC INTERFACE
-# ===========================================
-# NEW NAME: provision_users_with_groups (better describes what it does)
-# OLD NAME: add_users_to_groups (kept for backward compatibility)
+# =================================================================================================
+# PUBLIC INTERFACE & LEGACY COMPATIBILITY
+# =================================================================================================
+
+# Renamed for clarity, but keeping old names for backward compatibility.
 provision_users_with_groups() {
-    local mapping_file="$1"
-    
-    print_provisioning_banner "$mapping_file"
-    
-    provision_users_and_groups "$mapping_file"
+    print_provisioning_banner "$1"
+    provision_users_and_groups "$1"
 }
 
-# Backward compatibility alias
 add_users_to_groups() {
     provision_users_with_groups "$@"
+}
+
+add_users_from_json() {
+    parse_users_from_json "$1"
 }

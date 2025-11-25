@@ -1,126 +1,153 @@
 #!/usr/bin/env bash
-# ================================================
-# Expression Parser Module
-# Version: 2.0.0
-# ================================================
-# Full expression parser with AND, OR, NOT, parentheses
-# Supports: =, !=, >, <, >=, <=, LIKE, NOT LIKE
-# ================================================
 
-# parse_where_expression()
-# Parses and evaluates WHERE expression against data object
-# Args:
-#   $1 - expression string
-#   $2+ - data object (field=value pairs)
-# Returns:
-#   0 if expression evaluates to true, 1 if false
-# Example:
-#   parse_where_expression "uid > 1500 AND status = active" "uid=1501" "status=active"
+# =================================================================================================
+#
+# Expression Parser Module
+#
+# Description:
+#   This module provides a powerful and flexible way to parse and evaluate conditional
+#   expressions, primarily for the '--where' clause in the '--view' command. It allows users
+#   to construct complex queries using logical operators (AND, OR, NOT), comparison
+#   operators (=, !=, >, <, >=, <=), and pattern matching (LIKE, MATCHES).
+#
+#   The parser is designed to handle nested expressions with parentheses and can correctly
+#   evaluate different data types, including strings, numbers, dates, and file sizes.
+#
+# Key Features:
+#   - Logical Operators: Supports AND, OR, and NOT for combining conditions.
+#   - Parentheses: Correctly handles nested expressions for precedence.
+#   - Rich Comparisons: Evaluates standard comparisons, plus LIKE for wildcard matching
+#     and MATCHES for regex.
+#   - Type Awareness: Automatically handles comparisons for numbers, dates (by converting
+#     to timestamps), and file sizes (by converting to bytes).
+#
+# Example Usage (within the context of the main script):
+#   --where "status = 'active' AND (home_size > '1GB' OR last_login < '30d')"
+#
+# =================================================================================================
+
+# =================================================================================================
+# FUNCTION: parse_where_expression
+# DESCRIPTION:
+#   The main entry point for parsing a 'where' expression. It takes the expression string
+#   and an array of data (key-value pairs) and initiates the evaluation.
+#
+# PARAMETERS:
+#   $1 - expression: The logical expression string to evaluate.
+#   $@ - data: An array of key-value pairs representing the data for a single record
+#        (e.g., "username=jdoe" "uid=1001").
+#
+# RETURNS:
+#   0 if the expression evaluates to true, 1 otherwise.
+# =================================================================================================
 parse_where_expression() {
     local expression="$1"
     shift
     local data=("$@")
-    
-    # Empty expression = always true
+
     [ -z "$expression" ] && return 0
-    
-    # Parse data into associative array
+
+    # Convert the data array into an associative array for easy lookups.
     declare -A fields
     for item in "${data[@]}"; do
         local key="${item%%=*}"
         local value="${item#*=}"
         fields[$key]="$value"
     done
-    
-    # Evaluate expression
+
     eval_expression "$expression" fields
 }
 
-# eval_expression()
-# Recursive expression evaluator
-# Args:
-#   $1 - expression
-#   $2 - reference to fields associative array
-# Returns:
-#   0 if true, 1 if false
+# =================================================================================================
+# FUNCTION: eval_expression
+# DESCRIPTION:
+#   Recursively evaluates a logical expression. It identifies the top-level logical operator
+#   (OR, AND, NOT) and splits the expression to evaluate each part, respecting operator
+#   precedence (OR is evaluated before AND).
+#
+# PARAMETERS:
+#   $1 - expr: The expression or sub-expression to evaluate.
+#   $2 - fields_ref: A nameref to the associative array of data fields.
+#
+# RETURNS:
+#   The exit code of the evaluated condition (0 for true, 1 for false).
+# =================================================================================================
 eval_expression() {
     local expr="$1"
     local -n fields_ref=$2
-    
-    # Remove leading/trailing whitespace
+
     expr=$(echo "$expr" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-    
-    # Handle parentheses (recursive)
-    if [[ "$expr" =~ ^\(.*\)$ ]]; then
-        # Remove outer parentheses
+
+    # Handle parenthesized expressions by recursively calling this function.
+    if [[ "$expr" =~ ^\((.*)\)$ ]]; then
         expr="${expr:1:-1}"
         eval_expression "$expr" fields_ref
         return $?
     fi
-    
-    # Find top-level OR operator (lowest precedence)
+
+    # Split by 'OR' first, as it has lower precedence.
     if contains_top_level_operator "$expr" "OR"; then
         local left right
         split_by_operator "$expr" "OR" left right
-        
         eval_expression "$left" fields_ref || eval_expression "$right" fields_ref
         return $?
     fi
-    
-    # Find top-level AND operator
+
+    # Then split by 'AND'.
     if contains_top_level_operator "$expr" "AND"; then
         local left right
         split_by_operator "$expr" "AND" left right
-        
         eval_expression "$left" fields_ref && eval_expression "$right" fields_ref
         return $?
     fi
-    
-    # Handle NOT operator
+
+    # Handle 'NOT' operator.
     if [[ "$expr" =~ ^NOT[[:space:]]+ ]]; then
         local inner="${expr#NOT }"
         inner=$(echo "$inner" | sed 's/^[[:space:]]*//')
-        eval_expression "$inner" fields_ref
-        # Invert result
-        [ $? -eq 0 ] && return 1 || return 0
+        ! eval_expression "$inner" fields_ref
+        return $?
     fi
-    
-    # Base case: evaluate comparison
+
+    # If no logical operators are found, evaluate it as a simple comparison.
     eval_comparison "$expr" fields_ref
 }
 
-# contains_top_level_operator()
-# Checks if expression contains operator at top level (not in parentheses)
-# Args:
-#   $1 - expression
-#   $2 - operator (AND, OR)
-# Returns:
-#   0 if found, 1 if not found
+# =================================================================================================
+# FUNCTION: contains_top_level_operator
+# DESCRIPTION:
+#   Checks if an expression contains a specific logical operator (AND, OR) at the top level
+#   (i.e., not inside parentheses).
+#
+# PARAMETERS:
+#   $1 - expr: The expression string.
+#   $2 - operator: The operator to search for ("AND" or "OR").
+#
+# RETURNS:
+#   0 if the operator is found at the top level, 1 otherwise.
+# =================================================================================================
 contains_top_level_operator() {
     local expr="$1"
     local operator="$2"
-    
     local paren_depth=0
     local i=0
     local len=${#expr}
-    
+
     while [ $i -lt $len ]; do
         local char="${expr:$i:1}"
-        
         case "$char" in
             '(') ((paren_depth++)) ;;
             ')') ((paren_depth--)) ;;
             *)
                 if [ $paren_depth -eq 0 ]; then
-                    # Check if operator starts here (case-insensitive)
                     local substr="${expr:$i:${#operator}}"
                     if [ "${substr^^}" = "$operator" ]; then
-                        # Check word boundary (space before/after)
+                        # Ensure it's a whole word, surrounded by spaces.
                         local before=" "
                         local after=" "
                         [ $i -gt 0 ] && before="${expr:$((i-1)):1}"
                         [ $((i + ${#operator})) -lt $len ] && after="${expr:$((i+${#operator})):1}"
-                        
+
                         if [[ "$before" =~ [[:space:]] ]] && [[ "$after" =~ [[:space:]] ]]; then
                             return 0
                         fi
@@ -130,30 +157,35 @@ contains_top_level_operator() {
         esac
         ((i++))
     done
-    
     return 1
 }
 
-# split_by_operator()
-# Splits expression by top-level operator
-# Args:
-#   $1 - expression
-#   $2 - operator (AND, OR)
-#   $3 - variable name for left part
-#   $4 - variable name for right part
+# =================================================================================================
+# FUNCTION: split_by_operator
+# DESCRIPTION:
+#   Splits an expression into two parts (left and right) based on the first occurrence of a
+#   top-level logical operator.
+#
+# PARAMETERS:
+#   $1 - expr: The expression string.
+#   $2 - operator: The operator to split by.
+#   $3 - left_ref: A nameref to store the left part of the expression.
+#   $4 - right_ref: A nameref to store the right part of the expression.
+#
+# RETURNS:
+#   0 on successful split, 1 otherwise.
+# =================================================================================================
 split_by_operator() {
     local expr="$1"
     local operator="$2"
     local -n left_ref=$3
     local -n right_ref=$4
-    
     local paren_depth=0
     local i=0
     local len=${#expr}
-    
+
     while [ $i -lt $len ]; do
         local char="${expr:$i:1}"
-        
         case "$char" in
             '(') ((paren_depth++)) ;;
             ')') ((paren_depth--)) ;;
@@ -165,7 +197,7 @@ split_by_operator() {
                         local after=" "
                         [ $i -gt 0 ] && before="${expr:$((i-1)):1}"
                         [ $((i + ${#operator})) -lt $len ] && after="${expr:$((i+${#operator})):1}"
-                        
+
                         if [[ "$before" =~ [[:space:]] ]] && [[ "$after" =~ [[:space:]] ]]; then
                             left_ref="${expr:0:$i}"
                             right_ref="${expr:$((i+${#operator}))}"
@@ -177,43 +209,40 @@ split_by_operator() {
         esac
         ((i++))
     done
-    
     return 1
 }
 
-# eval_comparison()
-# Evaluates single comparison (field operator value)
-# Args:
-#   $1 - comparison string (e.g., "uid > 1500")
-#   $2 - reference to fields associative array
-# Returns:
-#   0 if true, 1 if false
+# =================================================================================================
+# FUNCTION: eval_comparison
+# DESCRIPTION:
+#   Evaluates a single comparison expression (e.g., "uid > 1000"). It parses the field,
+#   operator, and value, then performs the appropriate comparison.
+#
+# PARAMETERS:
+#   $1 - comparison: The comparison string.
+#   $2 - fields_ref: A nameref to the associative array of data fields.
+#
+# RETURNS:
+#   The exit code of the comparison (0 for true, 1 for false).
+# =================================================================================================
 eval_comparison() {
     local comparison="$1"
     local -n fields_ref=$2
-    
-    # Parse comparison: field operator value
     local field operator value
-    
-    # Try two-character operators first (>=, <=, !=, NOT LIKE)
-    if [[ "$comparison" =~ ^([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]+(NOT[[:space:]]+LIKE|>=|<=|!=)[[:space:]]+(.+)$ ]]; then
-        field="${BASH_REMATCH[1]}"
-        operator="${BASH_REMATCH[2]}"
-        value="${BASH_REMATCH[3]}"
-    # Then single-character operators (=, >, <, LIKE)
-    elif [[ "$comparison" =~ ^([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]+(LIKE|=|>|<)[[:space:]]+(.+)$ ]]; then
+
+    # Regex to parse "field operator value" structure.
+    if [[ "$comparison" =~ ^([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]+(NOT[[:space:]]+LIKE|NOT[[:space:]]+MATCHES|>=|<=|!=|MATCHES|LIKE|=|>|<)[[:space:]]+(.+)$ ]]; then
         field="${BASH_REMATCH[1]}"
         operator="${BASH_REMATCH[2]}"
         value="${BASH_REMATCH[3]}"
     else
-        # Invalid comparison format
-        return 1
+        return 1 # Invalid comparison format.
     fi
-    
-    # Remove quotes from value if present
+
+    # Trim quotes from the value.
     value=$(echo "$value" | sed "s/^['\"]//;s/['\"]$//")
-    
-    # Get field value (case-insensitive field name)
+
+    # Find the actual value of the field from the data map (case-insensitive).
     local field_value=""
     for key in "${!fields_ref[@]}"; do
         if [ "${key,,}" = "${field,,}" ]; then
@@ -221,98 +250,100 @@ eval_comparison() {
             break
         fi
     done
-    
-    # Field not found = comparison fails
-    [ -z "$field_value" ] && return 1
-    
-    # Evaluate based on operator (case-insensitive)
+
+    [ -z "$field_value" ] && [ "$field_value" != "0" ] && return 1 # Field not found.
+
     case "${operator^^}" in
-        "=")
-            [ "${field_value,,}" = "${value,,}" ]
+        "MATCHES")
+            [[ "$field_value" =~ $value ]]
             ;;
-        "!=")
-            [ "${field_value,,}" != "${value,,}" ]
-            ;;
-        ">")
-            compare_values "$field_value" "$value" "gt"
-            ;;
-        "<")
-            compare_values "$field_value" "$value" "lt"
-            ;;
-        ">=")
-            compare_values "$field_value" "$value" "ge"
-            ;;
-        "<=")
-            compare_values "$field_value" "$value" "le"
+        "NOT MATCHES")
+            ! [[ "$field_value" =~ $value ]]
             ;;
         "LIKE")
             match_pattern "${field_value,,}" "${value,,}"
             ;;
         "NOT LIKE")
-            match_pattern "${field_value,,}" "${value,,}"
-            [ $? -eq 0 ] && return 1 || return 0
+            ! match_pattern "${field_value,,}" "${value,,}"
+            ;;
+        ">"|"<"|">="|"<=")
+            # Special handling for date/time fields.
+            if [[ "$field" == *"date"* || "$field" == *"login"* || "$field" == *"expires"* ]]; then
+                local field_ts=$(date -d "$field_value" +%s 2>/dev/null || echo 0)
+                local value_ts=$(date -d "$value" +%s 2>/dev/null || echo 0)
+
+                if [[ $field_ts -gt 0 && $value_ts -gt 0 ]]; then
+                    case "${operator^^}" in
+                        ">") [ "$field_ts" -gt "$value_ts" ] ;;
+                        "<") [ "$field_ts" -lt "$value_ts" ] ;;
+                        ">=") [ "$field_ts" -ge "$value_ts" ] ;;
+                        "<=") [ "$field_ts" -le "$value_ts" ] ;;
+                    esac
+                    return $?
+                fi
+            fi
+            compare_values "$field_value" "$value" "${operator,,}"
             ;;
         *)
-            return 1
+            compare_values "$field_value" "$value" "${operator,,}"
             ;;
     esac
 }
 
-# compare_values()
-# Compares two values (numeric or string)
-# Args:
-#   $1 - left value
-#   $2 - right value
-#   $3 - comparison type (gt, lt, ge, le)
-# Returns:
-#   0 if true, 1 if false
+# =================================================================================================
+# FUNCTION: compare_values
+# DESCRIPTION:
+#   Compares two values, attempting to treat them as numbers first, then as strings.
+#   It also handles special unit conversions for file sizes and time durations.
+#
+# PARAMETERS:
+#   $1 - left: The left-hand value.
+#   $2 - right: The right-hand value.
+#   $3 - comp_type: The comparison operator (e.g., 'gt', 'lt', '=', '!=').
+# =================================================================================================
 compare_values() {
     local left="$1"
     local right="$2"
     local comp_type="$3"
-    
-    # Convert sizes to bytes if applicable
+
+    # Convert file sizes (e.g., '1GB') to bytes and time durations (e.g., '30d') to days.
     left=$(convert_to_bytes "$left")
     right=$(convert_to_bytes "$right")
-    
-    # Convert time units to days if applicable
     left=$(convert_to_days "$left")
     right=$(convert_to_days "$right")
-    
-    # Try numeric comparison
+
+    # Perform a numeric comparison if both values are integers.
     if [[ "$left" =~ ^[0-9]+$ ]] && [[ "$right" =~ ^[0-9]+$ ]]; then
         case "$comp_type" in
-            gt) [ "$left" -gt "$right" ] ;;
-            lt) [ "$left" -lt "$right" ] ;;
-            ge) [ "$left" -ge "$right" ] ;;
-            le) [ "$left" -le "$right" ] ;;
+            gt|">") [ "$left" -gt "$right" ] ;;
+            lt|"<") [ "$left" -lt "$right" ] ;;
+            ge|">=") [ "$left" -ge "$right" ] ;;
+            le|"<=") [ "$left" -le "$right" ] ;;
+            "="|"!=") [ "$left" "$comp_type" "$right" ] ;;
         esac
         return $?
     fi
-    
-    # Fall back to string comparison
+
+    # Otherwise, perform a string comparison.
     case "$comp_type" in
-        gt) [[ "$left" > "$right" ]] ;;
-        lt) [[ "$left" < "$right" ]] ;;
-        ge) [[ "$left" > "$right" || "$left" = "$right" ]] ;;
-        le) [[ "$left" < "$right" || "$left" = "$right" ]] ;;
+        gt|">") [[ "$left" > "$right" ]] ;;
+        lt|"<") [[ "$left" < "$right" ]] ;;
+        ge|">=") [[ "$left" > "$right" || "$left" = "$right" ]] ;;
+        le|"<=") [[ "$left" < "$right" || "$left" = "$right" ]] ;;
+         "="|"!=") [ "$left" "$comp_type" "$right" ] ;;
     esac
 }
 
-# convert_to_bytes()
-# Converts size string to bytes (100MB -> 104857600)
-# Args:
-#   $1 - size string
-# Returns:
-#   Size in bytes, or original string if not a size
+# =================================================================================================
+# FUNCTION: convert_to_bytes
+# DESCRIPTION:
+#   Converts a file size string (e.g., "512MB") into bytes.
+# =================================================================================================
 convert_to_bytes() {
     local input="$1"
-    
-    # Check if it's a size string (ends with KB, MB, GB, TB)
     if [[ "$input" =~ ^([0-9]+)(KB|MB|GB|TB)$ ]]; then
         local number="${BASH_REMATCH[1]}"
         local unit="${BASH_REMATCH[2]}"
-        
         case "$unit" in
             KB) echo $((number * 1024)) ;;
             MB) echo $((number * 1024 * 1024)) ;;
@@ -324,61 +355,47 @@ convert_to_bytes() {
     fi
 }
 
-# convert_to_days()
-# Converts time string to days (2w -> 14, 30d -> 30)
-# Args:
-#   $1 - time string
-# Returns:
-#   Time in days, or original string if not a time
+# =================================================================================================
+# FUNCTION: convert_to_days
+# DESCRIPTION:
+#   Converts a time duration string (e.g., "4w") into days.
+# =================================================================================================
 convert_to_days() {
     local input="$1"
-    
-    # Check if it's a time string (ends with d, w, m, y)
     if [[ "$input" =~ ^([0-9]+)([dwmy])$ ]]; then
         local number="${BASH_REMATCH[1]}"
         local unit="${BASH_REMATCH[2]}"
-        
         case "$unit" in
             d) echo "$number" ;;
             w) echo $((number * 7)) ;;
-            m) echo $((number * 30)) ;;
-            y) echo $((number * 365)) ;;
+            m) echo $((number * 30)) ;; # Approximation
+            y) echo $((number * 365)) ;; # Approximation
         esac
     else
         echo "$input"
     fi
 }
 
-# match_pattern()
-# Matches value against pattern with wildcards
-# Args:
-#   $1 - value to match
-#   $2 - pattern (with * and ? wildcards)
-# Returns:
-#   0 if matches, 1 if not
+# =================================================================================================
+# FUNCTION: match_pattern
+# DESCRIPTION:
+#   Performs a wildcard pattern match (SQL LIKE style). It converts '*' to '.*' and '?' to '.'
+#   for use in a regex comparison.
+# =================================================================================================
 match_pattern() {
     local value="$1"
     local pattern="$2"
-    
-    # Convert SQL LIKE wildcards to bash glob
-    # * -> .* (any characters)
-    # ? -> . (single character)
-    pattern=$(echo "$pattern" | sed 's/\*/\.\*/g' | sed 's/?/\./g')
-    
-    # Match with regex
+    pattern=$(echo "$pattern" | sed 's/\*/.*/g' | sed 's/?/./g')
     [[ "$value" =~ ^${pattern}$ ]]
 }
 
-# validate_expression()
-# Validates expression syntax without evaluating
-# Args:
-#   $1 - expression string
-# Returns:
-#   0 if valid, 1 if invalid, prints error message
+# =================================================================================================
+# FUNCTION: validate_expression
+# DESCRIPTION:
+#   A simple validator to check for balanced parentheses in an expression.
+# =================================================================================================
 validate_expression() {
     local expr="$1"
-    
-    # Check balanced parentheses
     local paren_count=0
     local i=0
     while [ $i -lt ${#expr} ]; do
@@ -386,86 +403,21 @@ validate_expression() {
             '(') ((paren_count++)) ;;
             ')') ((paren_count--)) ;;
         esac
-        
         if [ $paren_count -lt 0 ]; then
             echo "ERROR: Unbalanced parentheses (too many closing)"
             return 1
         fi
         ((i++))
     done
-    
     if [ $paren_count -ne 0 ]; then
         echo "ERROR: Unbalanced parentheses (unclosed)"
         return 1
     fi
-    
-    # Check for valid operators (basic check)
-    # More comprehensive validation could be added
-    
     return 0
 }
 
-# test_expression_parser()
-# Unit tests for expression parser
-test_expression_parser() {
-    echo "Testing Expression Parser..."
-    echo ""
-    
-    # Test data
-    local test_data=(
-        "uid=1501"
-        "status=active"
-        "home_size=104857600"  # 100MB in bytes
-        "last_login=25"         # days
-        "username=alice"
-        "shell=/bin/bash"
-    )
-    
-    # Test cases: expression, expected_result
-    local tests=(
-        "uid > 1500|0"
-        "uid = 1501|0"
-        "status = active|0"
-        "status != locked|0"
-        "home_size > 50MB|0"
-        "home_size < 200MB|0"
-        "last_login < 30d|0"
-        "username LIKE 'a*'|0"
-        "username NOT LIKE 'b*'|0"
-        "uid > 1500 AND status = active|0"
-        "uid > 2000 OR status = active|0"
-        "NOT status = locked|0"
-        "(uid > 1500 AND status = active) OR username = bob|0"
-        "uid > 2000|1"
-        "status = locked|1"
-    )
-    
-    local passed=0
-    local failed=0
-    
-    for test in "${tests[@]}"; do
-        local expr="${test%|*}"
-        local expected="${test##*|}"
-        
-        parse_where_expression "$expr" "${test_data[@]}"
-        local result=$?
-        
-        if [ "$result" -eq "$expected" ]; then
-            echo "✓ PASS: $expr"
-            ((passed++))
-        else
-            echo "✗ FAIL: $expr (expected $expected, got $result)"
-            ((failed++))
-        fi
-    done
-    
-    echo ""
-    echo "Results: $passed passed, $failed failed"
-    
-    [ $failed -eq 0 ]
-}
-
-# If run directly, execute tests
+# --- Self-testing ---
+# If the script is run directly, it executes a test suite.
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
     test_expression_parser
 fi

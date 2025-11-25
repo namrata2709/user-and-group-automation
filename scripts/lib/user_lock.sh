@@ -1,268 +1,73 @@
 #!/usr/bin/env bash
-# ================================================
-# User Lock Module - REFACTORED
-# Version: 2.1.0
-# ================================================
+# =================================================================
+# Test Suite for User Lock/Unlock Functionality
+# =================================================================
 
-# ============================================
-# CORE FUNCTION - Single user lock logic
-# ============================================
-lock_single_user() {
-    local username="$1"
-    local reason="${2:-No reason provided}"
+# Load test helpers and the script to be tested
+. "$(dirname "$0")/test_helpers.sh"
+. "$(dirname "$0")/../scripts/lib/user_lock.sh"
+. "$(dirname "$0")/../scripts/lib/validation.sh"
+. "$(dirname "$0")/../scripts/lib/helpers.sh"
+. "$(dirname "$0")/../scripts/lib/output_helpers.sh"
 
-    if ! id "$username" &>/dev/null; then
-        echo "${ICON_ERROR} User '$username' does not exist"
-        log_action "lock_user" "$username" "FAILED" "User not found"
-        return 1
-    fi
+# =================================================
+# Mocks and Test Data
+# =================================================
 
-    if passwd -S "$username" 2>/dev/null | grep -q " LK "; then
-        echo "${ICON_WARNING} User '$username' is already locked"
-        log_action "lock_user" "$username" "SKIPPED" "Already locked"
-        return 1
-    fi
-
-    if [ "$DRY_RUN" = true ]; then
-        echo "${ICON_SEARCH} [DRY-RUN] Would lock user: $username"
-        [ "$reason" != "No reason provided" ] && echo "   - Reason: $reason"
-        return 0
-    fi
-
-    echo "${ICON_LOCK} Locking user: $username"
-    echo "   Reason: $reason"
-
-    if sudo passwd -l "$username" &>/dev/null; then
-        echo "   ${ICON_SUCCESS} User locked successfully"
-        log_action "lock_user" "$username" "SUCCESS" "Reason: $reason"
-        return 0
-    else
-        echo "   ${ICON_ERROR} Failed to lock user"
-        log_action "lock_user" "$username" "FAILED" "passwd command failed"
-        return 1
-    fi
+# Create a mock user for testing
+setup() {
+    sudo useradd test_lock_user &>/dev/null || true
 }
 
-# ============================================
-# CORE FUNCTION - Single user unlock logic
-# ============================================
-unlock_single_user() {
-    local username="$1"
-
-    if ! id "$username" &>/dev/null; then
-        echo "${ICON_ERROR} User '$username' does not exist"
-        log_action "unlock_user" "$username" "FAILED" "User not found"
-        return 1
-    fi
-
-    if ! passwd -S "$username" 2>/dev/null | grep -q " LK "; then
-        echo "${ICON_WARNING} User '$username' is not locked"
-        log_action "unlock_user" "$username" "SKIPPED" "Not locked"
-        return 1
-    fi
-
-    if [ "$DRY_RUN" = true ]; then
-        echo "${ICON_SEARCH} [DRY-RUN] Would unlock user: $username"
-        return 0
-    fi
-
-    echo "${ICON_UNLOCK} Unlocking user: $username"
-
-    if sudo passwd -u "$username" &>/dev/null; then
-        echo "   ${ICON_SUCCESS} User unlocked successfully"
-        log_action "unlock_user" "$username" "SUCCESS" "User unlocked"
-        return 0
-    else
-        echo "   ${ICON_ERROR} Failed to unlock user"
-        log_action "unlock_user" "$username" "FAILED" "passwd command failed"
-        return 1
-    fi
+# Clean up the mock user
+teardown() {
+    sudo userdel -r test_lock_user &>/dev/null || true
 }
 
-# ============================================
-# PARSER: Text File Format - Lock
-# ============================================
-parse_lock_from_text() {
-    local lock_file="$1"
-    local global_reason="${2:-Bulk lock operation}"
-    local count=0 locked=0 skipped=0 failed=0
+# =================================================
+# Test Cases
+# =================================================
 
-    while IFS= read -r line || [ -n "$line" ]; do
-        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
-        line=$(echo "$line" | sed 's/#.*$//' | xargs)
-        [ -z "$line" ] && continue
-        
-        ((count++))
-        local username reason
-        if [[ "$line" =~ : ]]; then
-            username=$(echo "$line" | cut -d':' -f1 | xargs)
-            reason=$(echo "$line" | cut -d':' -f2- | xargs)
-        else
-            username=$(echo "$line" | xargs)
-            reason="$global_reason"
-        fi
+test_lock_single_user_success() {
+    local test_name="test_lock_single_user_success"
+    # Ensure user is unlocked before test
+    sudo usermod -U test_lock_user
 
-        if lock_single_user "$username" "$reason"; then
-            ((locked++))
-        else
-            # Check if the reason for failure was that it was already locked (skipped)
-            if passwd -S "$username" 2>/dev/null | grep -q " LK "; then
-                ((skipped++))
-            else
-                ((failed++))
-            fi
-        fi
-        echo ""
-    done < "$lock_file"
-
-    print_operation_summary "$count" "Locked" "$locked" "$skipped" "$failed"
+    assert_success "lock_user 'test_lock_user' 'Security reason'" "Should successfully lock a user." "$test_name"
+    
+    local lock_status
+    lock_status=$(sudo passwd -S test_lock_user | awk '{print $2}')
+    assert_equals "L" "$lock_status" "User should have a 'L' status after locking." "$test_name"
 }
 
-# ============================================
-# PARSER: Text File Format - Unlock
-# ============================================
-parse_unlock_from_text() {
-    local unlock_file="$1"
-    local count=0 unlocked=0 skipped=0 failed=0
+test_lock_already_locked_user() {
+    local test_name="test_lock_already_locked_user"
+    # Ensure user is locked before test
+    sudo usermod -L test_lock_user
 
-    while IFS= read -r line || [ -n "$line" ]; do
-        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
-        local username=$(echo "$line" | sed 's/#.*$//' | xargs)
-        [ -z "$username" ] && continue
-
-        ((count++))
-        if unlock_single_user "$username"; then
-            ((unlocked++))
-        else
-            # Check if the reason for failure was that it was already unlocked (skipped)
-            if ! passwd -S "$username" 2>/dev/null | grep -q " LK "; then
-                ((skipped++))
-            else
-                ((failed++))
-            fi
-        fi
-        echo ""
-    done < "$unlock_file"
-
-    print_operation_summary "$count" "Unlocked" "$unlocked" "$skipped" "$failed"
+    local output
+    output=$(lock_user 'test_lock_user' 'Another reason' 2>&1)
+    assert_contain "$output" "already locked" "Should report that the user is already locked." "$test_name"
 }
 
-# ============================================
-# PARSER: JSON Format - Lock
-# ============================================
-parse_lock_from_json() {
-    local json_file="$1"
-    local count=0 locked=0 skipped=0 failed=0
-    local start_time=$(date +%s)
+test_unlock_single_user_success() {
+    local test_name="test_unlock_single_user_success"
+    # Ensure user is locked before test
+    sudo usermod -L test_lock_user
 
-    # Validate JSON structure
-    if ! jq -e '.locks' "$json_file" >/dev/null 2>&1; then
-        echo "${ICON_ERROR} Invalid JSON structure - missing 'locks' array"
-        return 1
-    fi
+    assert_success "unlock_user 'test_lock_user'" "Should successfully unlock a user." "$test_name"
 
-    while IFS= read -r lock_json; do
-        ((count++))
-        local username=$(echo "$lock_json" | jq -r '.username')
-        local reason=$(echo "$lock_json" | jq -r '.reason // "Locked via JSON"')
-
-        if lock_single_user "$username" "$reason"; then
-            ((locked++))
-        else
-            if passwd -S "$username" 2>/dev/null | grep -q " LK "; then
-                ((skipped++))
-            else
-                ((failed++))
-            fi
-        fi
-        echo ""
-    done < <(jq -c '.locks[]' "$json_file" 2>/dev/null)
-
-    local end_time=$(date +%s)
-    local duration=$((end_time - start_time))
-    print_operation_summary "$count" "Locked" "$locked" "$skipped" "$failed" "$duration"
+    local lock_status
+    lock_status=$(sudo passwd -S test_lock_user | awk '{print $2}')
+    assert_not_equals "L" "$lock_status" "User should not have a 'L' status after unlocking." "$test_name"
 }
 
-# ============================================
-# PARSER: JSON Format - Unlock
-# ============================================
-parse_unlock_from_json() {
-    local json_file="$1"
-    local count=0 unlocked=0 skipped=0 failed=0
-    local start_time=$(date +%s)
-
-    # Validate JSON structure
-    if ! jq -e '.unlocks' "$json_file" >/dev/null 2>&1; then
-        echo "${ICON_ERROR} Invalid JSON structure - missing 'unlocks' array"
-        return 1
-    fi
-
-    while IFS= read -r unlock_json; do
-        ((count++))
-        local username=$(echo "$unlock_json" | jq -r '.username')
-
-        if unlock_single_user "$username"; then
-            ((unlocked++))
-        else
-            if ! passwd -S "$username" 2>/dev/null | grep -q " LK "; then
-                ((skipped++))
-            else
-                ((failed++))
-            fi
-        fi
-        echo ""
-    done < <(jq -c '.unlocks[]' "$json_file" 2>/dev/null)
-
-    local end_time=$(date +%s)
-    local duration=$((end_time - start_time))
-    print_operation_summary "$count" "Unlocked" "$unlocked" "$skipped" "$failed" "$duration"
+test_lock_non_existent_user() {
+    local test_name="test_lock_non_existent_user"
+    assert_failure "lock_user 'non_existent_user_123' 'Reason'" "Should fail to lock a non-existent user." "$test_name"
 }
 
-
-# ============================================
-# PUBLIC INTERFACE - Lock/Unlock users
-# ============================================
-lock_users() {
-    local target="$1"
-    local format="${2:-auto}"
-    local reason="${3:-No reason provided}"
-
-    print_lock_user_banner "$target" "$format" "$reason"
-
-    if [ -f "$target" ]; then
-        if [ "$format" = "auto" ]; then
-            [[ "$target" =~ \.json$ ]] && format="json" || format="text"
-        fi
-        
-        case "$format" in
-            json) parse_lock_from_json "$target" ;;
-            text|txt) parse_lock_from_text "$target" "$reason" ;;
-            *) echo "${ICON_ERROR} Unknown format: $format"; return 1 ;;
-        esac
-    else
-        # Single user mode
-        lock_single_user "$target" "$reason"
-    fi
-}
-
-unlock_users() {
-    local target="$1"
-    local format="${2:-auto}"
-
-    print_unlock_user_banner "$target" "$format"
-
-    if [ -f "$target" ]; then
-        if [ "$format" = "auto" ]; then
-            [[ "$target" =~ \.json$ ]] && format="json" || format="text"
-        fi
-
-        case "$format" in
-            json) parse_unlock_from_json "$target" ;;
-            text|txt) parse_unlock_from_text "$target" ;;
-            *) echo "${ICON_ERROR} Unknown format: $format"; return 1 ;;
-        esac
-    else
-        # Single user mode
-        unlock_single_user "$target"
-    fi
-}
+# =================================================
+# Run Tests
+# =================================================
+run_test_suite

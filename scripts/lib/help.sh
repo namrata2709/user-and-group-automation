@@ -1,145 +1,185 @@
 #!/usr/bin/env bash
-# ================================================
-# Help System Module - REFACTORED
-# Version: 2.0.0
-# ================================================
+# ===============================================-
+# Help System Module
+# Version: 2.1.0
+# ===============================================-
+# This module provides functions to display detailed help messages for the
+# EC2 User Management System. It covers general usage, specific operations
+# like --add, --view, and --report, and advanced topics such as JSON input/output,
+# role-based provisioning, and configuration. Each function is designed to
+# provide clear, actionable information to the user.
+# ===============================================-
 
+# =================================================================================================
+# FUNCTION: show_general_help
+# DESCRIPTION:
+#   Displays the main help message, providing a comprehensive overview of the script's
+#   capabilities, including primary operations, common options, and usage examples.
+#   It serves as the entry point for users seeking guidance on how to use the script.
+#
+# PARAMETERS:
+#   None
+#
+# RETURNS:
+#   None
+# =================================================================================================
 show_general_help() {
     cat <<'EOF'
 ========================================
-User and Group Management Script
+EC2 User Management System
 ========================================
 
+DESCRIPTION:
+  A comprehensive command-line tool for managing user and group accounts
+  on EC2 instances. It simplifies standard administrative tasks, supports
+  bulk operations, and provides powerful reporting and querying capabilities.
+
 USAGE:
-  sudo ./main.sh [OPERATION] [ACTION] [OPTIONS]
+  sudo ./user.sh [OPERATION] [OPTIONS]
 
 OPERATIONS:
-  --add          Add users or groups
-  --update       Update users or groups
-  --delete       Delete users or groups
-  --lock         Lock a user account
-  --unlock       Unlock a user account
-  --view         View users, groups, or system details
-  --search       Search for users or groups
-  --report       Generate audit and activity reports
-  --export       Export user and group data
-  --apply-roles  Apply role-based configurations from a JSON file
-  --help         Show this help message or help for a specific topic
-
-ACTIONS (for --add, --delete, --update):
-  user           Target a single user
-  group          Target a single group
-
-INPUTS:
-  --name <name>       Specify a single user or group name.
-  --names <file>      Provide a text file containing a list of names.
-  --input <file.json> Provide a JSON file for bulk operations.
+  --add                Add users or groups.
+  --update             Update existing users or groups.
+  --delete             Delete users or groups.
+  --lock               Lock a user account.
+  --unlock             Unlock a user account.
+  --view               View users, groups, or system details.
+  --report             Generate security, activity, and compliance reports.
+  --export             Export user and group data to CSV or JSON.
+  --apply-roles        Provision users and apply configurations from a role file.
+  --compliance         Run system compliance and security checks.
+  --help [topic]       Show this message or help for a specific topic.
 
 COMMON OPTIONS:
-  --dry-run      Simulate the operation without making any changes.
-  --format <fmt> Specify the input format (text, json). Auto-detected by default.
-  --json         Output results in JSON format (for --view, --search, --report).
+  --dry-run            Simulate an operation without making system changes.
+  --config <path>      Specify a custom configuration file.
+  --log-level <level>  Set the logging level (e.g., info, debug, error).
+  --json               Output results in JSON format (for --view, --report).
 
 EXAMPLES:
-  # Add users from a text file
-  sudo ./main.sh --add user --names users.txt
+  # Add a single user with an automatically generated password.
+  sudo ./user.sh --add user --name alice --password random
 
-  # Add groups from a JSON file
-  sudo ./main.sh --add group --input groups.json
+  # Add multiple groups from a text file.
+  sudo ./user.sh --add group --names groups.txt
 
-  # Delete a single user interactively
-  sudo ./main.sh --delete user --name alice
+  # Lock a user account with a recorded reason.
+  sudo ./user.sh --lock --name bob --reason "Security audit"
 
-  # Lock a user with a reason
-  sudo ./main.sh --lock --name bob --reason "Security review"
+  # View all users with a home directory larger than 1GB.
+  sudo ./user.sh --view users --where "home_size > '1GB'"
 
-  # View all users in JSON format
-  sudo ./main.sh --view users --json
-
-  # Generate a security report
-  sudo ./main.sh --report security
+  # Generate a security report in JSON format.
+  sudo ./user.sh --report security --json
 
 DETAILED HELP:
-  ./main.sh --help add
-  ./main.sh --help delete
-  ./main.sh --help lock
-  ./main.sh --help view
-  ./main.sh --help json
-  ./main.sh --help roles
+  ./user.sh --help view
+  ./user.sh --help add
+  ./user.sh --help delete
+  ./user.sh --help json
+  ./user.sh --help roles
+  ./user.sh --help config
 
-CONFIG: /opt/admin_dashboard/config/user_mgmt.conf
-LOG: /var/log/user_mgmt.log
+----------------------------------------
+Script Version: 3.0.0
+Configuration: /etc/user-automation/config.conf
+Log File: /var/log/user-automation.log
 ========================================
 EOF
 }
 
+# =================================================================================================
+# FUNCTION: show_json_help
+# DESCRIPTION:
+#   Provides detailed guidance on using JSON for both input and output. It explains
+#   the file structure for bulk operations (--add, --delete, --update) and how to
+#   request JSON output for data retrieval commands (--view, --report).
+#
+# PARAMETERS:
+#   None
+#
+# RETURNS:
+#   None
+# =================================================================================================
 show_json_help() {
     cat <<'EOF'
 ========================================
 JSON Operations Help
 ========================================
 
-JSON is supported for both input (bulk operations) and output (viewing data).
+JSON is a powerful format for both input (bulk operations) and output (data retrieval).
 
 ----------------------------------------
-JSON INPUT (--input <file>)
+JSON INPUT (--input <file.json>)
 ----------------------------------------
-Use a JSON file to add or delete users and groups in bulk.
+Use a JSON file to perform bulk operations for adding, updating, or deleting users and groups.
 
-  # Add users from a JSON file
-  sudo ./main.sh --add user --input users.json
+  # Add multiple users from a JSON file.
+  sudo ./user.sh --add user --input new_users.json
 
-  # Add groups from a JSON file
-  sudo ./main.sh --add group --input groups.json
+  # Update user attributes from a JSON file.
+  sudo ./user.sh --update user --input user_updates.json
 
-  # Delete groups from a JSON file
-  sudo ./main.sh --delete group --input groups_to_delete.json
+  # Delete groups defined in a JSON file.
+  sudo ./user.sh --delete group --input old_groups.json
 
 JSON FILE FORMATS:
 
-  groups.json (for adding groups):
+  users_add.json (for --add user):
   {
-    "groups": [
+    "users": [
       {
-        "name": "developers",
-        "action": "create",
-        "members": ["alice", "bob"]
-      },
-      {
-        "name": "testers",
-        "action": "create"
+        "username": "alice",
+        "comment": "Alice Smith, Developer",
+        "groups": ["developers", "docker"],
+        "shell": "/bin/bash",
+        "password_policy": { "type": "random" }
       }
     ]
   }
 
-  groups_to_delete.json (for deleting groups):
+  groups_add.json (for --add group):
   {
     "groups": [
-      { "name": "old_project", "action": "delete" },
-      { "name": "temp_team", "action": "delete" }
+      {
+        "name": "developers",
+        "gid": "2000",
+        "members": ["alice", "bob"]
+      }
     ]
   }
 
-  (See './main.sh --help add' and './main.sh --help delete' for more examples)
+  (See './user.sh --help add' and './user.sh --help update' for more examples.)
 
 ----------------------------------------
 JSON OUTPUT (--json)
 ----------------------------------------
-Get machine-readable output for viewing, searching, and reporting.
+Enable JSON output to get machine-readable data from --view and --report commands.
+This is ideal for scripting, automation, or integration with other tools like 'jq'.
 
-  # View all users in JSON
-  sudo ./main.sh --view users --json
+  # View all users in JSON format.
+  sudo ./user.sh --view users --json
 
-  # Search for users with 'dev' in their name
-  sudo ./main.sh --search users --pattern "dev" --json
-
-  # Get a security report in JSON
-  sudo ./main.sh --report security --json | jq
+  # Get a security report in JSON and pretty-print it with jq.
+  sudo ./user.sh --report security --json | jq
 
 ========================================
 EOF
 }
 
+# =================================================================================================
+# FUNCTION: show_roles_help
+# DESCRIPTION:
+#   Explains the role-based provisioning feature (--apply-roles). It details the
+#   JSON file structure for defining roles and assigning them to users, providing
+#   a clear workflow for standardizing user configurations.
+#
+# PARAMETERS:
+#   None
+#
+# RETURNS:
+#   None
+# =================================================================================================
 show_roles_help() {
     cat <<'EOF'
 ========================================
@@ -147,47 +187,68 @@ Help: Role-Based Provisioning
 ========================================
 
 OVERVIEW:
-  Define roles with specific permissions (groups, shell, etc.) and assign them
-  to users. This is ideal for standardizing user setups.
+  The --apply-roles operation allows you to define standardized user configurations
+  (roles) and apply them to users. This is perfect for ensuring consistency and
+  simplifying user onboarding and management.
 
 USAGE:
-  sudo ./main.sh --apply-roles <roles.json>
+  sudo ./user.sh --apply-roles <roles.json>
 
 FILE STRUCTURE:
-{
-  "roles": {
-    "developer": {
-      "groups": ["developers", "git", "docker"],
-      "shell": "/bin/bash",
-      "password_expiry_days": 90,
-      "description": "For software developers"
-    }
-  },
-  "assignments": [
-    {"username": "alice", "role": "developer"},
-    {"username": "new_dev", "role": "developer"}
-  ]
-}
+  The JSON file must contain a "roles" object and an "assignments" array.
+
+  {
+    "roles": {
+      "developer": {
+        "groups": ["developers", "git", "docker"],
+        "shell": "/bin/bash",
+        "sudo": "yes",
+        "description": "Standard developer role"
+      },
+      "analyst": {
+        "groups": ["analysts", "readonly"],
+        "shell": "/bin/bash",
+        "description": "Standard analyst role"
+      }
+    },
+    "assignments": [
+      { "username": "alice", "role": "developer" },
+      { "username": "bob", "role": "analyst" }
+    ]
+  }
 
 WORKFLOW:
-  1. Define your roles and assignments in a JSON file.
-  2. If a user in 'assignments' does not exist, they will be created.
-  3. If a user exists, their account will be updated to match the role settings.
-
-  sudo ./main.sh --apply-roles roles.json
+  1. Define roles with desired attributes (groups, shell, sudo access, etc.).
+  2. Assign roles to users in the "assignments" section.
+  3. Run the script with --apply-roles.
+     - If a user does not exist, they will be created with the specified role.
+     - If a user exists, their account will be updated to match the role definition.
 
 BENEFITS:
-  - Ensures consistent permissions for users in the same role.
-  - Simplifies onboarding and permission updates.
-  - Provides a clear, self-documenting source of truth for user roles.
+  - Enforces consistent configurations for different user types.
+  - Simplifies onboarding new team members.
+  - Provides a self-documenting source of truth for user permissions.
 
-TEMPLATE:
-  See: scripts/examples/roles.json
+EXAMPLE TEMPLATE:
+  See 'scripts/examples/roles_example.json' for a sample file.
 
 ========================================
 EOF
 }
 
+# =================================================================================================
+# FUNCTION: show_config_help
+# DESCRIPTION:
+#   Details the script's configuration file, including its location and key settings.
+#   It helps administrators customize the script's default behavior, such as log paths,
+#   password policies, and validation rules.
+#
+# PARAMETERS:
+#   None
+#
+# RETURNS:
+#   None
+# =================================================================================================
 show_config_help() {
     cat <<'EOF'
 ========================================
@@ -195,35 +256,54 @@ Help: Configuration Guide
 ========================================
 
 LOCATION:
-  /opt/admin_dashboard/config/user_mgmt.conf
+  /etc/user-automation/config.conf
 
-This file controls default behaviors of the script.
+This file controls the default behavior and settings of the script.
 
 KEY SETTINGS:
 
-  PASSWORD_LENGTH=16
-  # Length of auto-generated random passwords.
+  LOG_FILE="/var/log/user-automation.log"
+  # Path to the main log file.
 
-  LOG_FILE="/var/log/user_mgmt.log"
-  # Path to the main audit log file.
+  CACHE_DIR="/var/cache/user-automation"
+  # Directory to store cached user and group data for faster --view operations.
 
-  BACKUP_DIR="/var/backups/users"
-  # Default directory for user deletion backups.
+  CACHE_TTL=3600
+  # Time-to-live for cache files in seconds (e.g., 3600 = 1 hour).
 
   DEFAULT_SHELL="/bin/bash"
   # Default shell for new users if not specified.
 
-  USE_UNICODE="yes"
-  # Use 'yes' for modern terminals, 'no' for basic SSH/TTY.
+  MIN_USER_UID=1000
+  # Minimum UID for regular users.
+
+  PASSWORD_EXPIRY_DAYS=90
+  # Default password expiry for new users.
+
+  USE_ICONS="true"
+  # Set to "false" to disable icons for terminals that don't support them.
 
 VALIDATION:
-  The configuration is validated on every run. If critical errors are
-  found, the script will exit. Fix the errors and run again.
+  The configuration is loaded at runtime. If the file or critical settings
+  are missing, the script will fall back to default values and issue a warning.
 
 ========================================
 EOF
 }
 
+# =================================================================================================
+# FUNCTION: show_view_help
+# DESCRIPTION:
+#   Provides a detailed guide to the --view operation, covering all available targets
+#   (users, groups, system) and options for filtering, sorting, pagination, and
+#   output formatting. It places special emphasis on the powerful --where clause.
+#
+# PARAMETERS:
+#   None
+#
+# RETURNS:
+#   None
+# =================================================================================================
 show_view_help() {
     cat <<'EOF'
 ========================================
@@ -231,88 +311,178 @@ Help: --view
 ========================================
 
 Displays detailed information about users, groups, and system resources.
+This command is read-only and does not make any changes to the system.
 
 USAGE:
-  sudo ./main.sh --view <TARGET> [OPTIONS]
+  sudo ./user.sh --view <TARGET> [OPTIONS]
 
 TARGETS:
-  users          View a list of users.
-  groups         View a list of groups.
-  user <name>    View detailed information for a single user.
-  group <name>   View detailed information for a single group.
-  system         View a summary of system user and group statistics.
+  users                View a list of all users.
+  groups               View a list of all groups.
+  user <name>          View detailed information for a single user.
+  group <name>         View detailed information for a single group.
+  system               View a summary of system user and group statistics.
+  validate             Run validation checks on user/group configurations.
 
-OPTIONS FOR `users` and `groups`:
+----------------------------------------
+QUERYING WITH --where
+----------------------------------------
+The --where option provides a powerful way to filter results using logical expressions.
 
-  --filter <f>   Filter results. Examples:
-                 - users: 'active', 'locked', 'sudo', 'inactive:90' (days)
-                 - groups: 'empty', 'large'
-  --search <p>   Search by name with a pattern (e.g., 'dev*').
-  --sort <by>    Sort results. 
-                 - users: 'username', 'uid', 'home-size'
-                 - groups: 'groupname', 'gid', 'member-count'
-  --limit <n>    Limit the number of results.
-  --skip <n>     Skip a number of results for pagination.
-  --columns <c>  Comma-separated list of columns to display.
-  --json         Output in JSON format.
+  --where "EXPRESSION"
+
+EXPRESSION SYNTAX:
+  - Comparisons: =, !=, >, <, >=, <=
+  - Pattern Matching: LIKE (wildcard), MATCHES (regex)
+  - Logical Operators: AND, OR, NOT
+  - Parentheses for grouping: ( )
+
+AVAILABLE FIELDS for 'users':
+  username, uid, gid, comment, home, shell, status, last_login, home_size,
+  password_status, password_expiry_date, is_sudoer
+
+AVAILABLE FIELDS for 'groups':
+  groupname, gid, member_count, members
 
 EXAMPLES:
 
-  # View all active users with sudo access
-  sudo ./main.sh --view users --filter 'active,sudo'
+  # View users who are locked OR have an expired password.
+  sudo ./user.sh --view users --where "status = 'locked' OR password_status = 'expired'"
 
-  # View top 5 largest home directories
-  sudo ./main.sh --view users --sort 'home-size' --limit 5
+  # View users with a UID greater than 2000 AND who are sudoers.
+  sudo ./user.sh --view users --where "uid > 2000 AND is_sudoer = 'true'"
 
-  # View details for a specific user
-  sudo ./main.sh --view user alice
+  # View groups with 'admin' in the name and more than 5 members.
+  sudo ./user.sh --view groups --where "groupname LIKE '%admin%' AND member_count > 5"
 
-  # View all empty groups in JSON format
-  sudo ./main.sh --view groups --filter 'empty' --json
+----------------------------------------
+OTHER OPTIONS
+----------------------------------------
+  --sort <field>       Sort results by a specific field (e.g., 'uid', 'home_size').
+  --limit <n>          Limit the number of results returned.
+  --skip <n>           Skip the first 'n' results for pagination.
+  --columns <list>     Specify which columns to display (e.g., 'username,uid,shell').
+  --json               Output results in JSON format.
+  --no-cache           Bypass the cache and fetch live data.
 
-  # View a detailed system summary
-  sudo ./main.sh --view system --detailed
+CACHING:
+  To improve performance, --view operations use a cache. Data is refreshed
+  automatically based on the CACHE_TTL setting in the config file.
+  Use --no-cache to force a refresh and get live, real-time data.
 
 ========================================
 EOF
 }
 
+# =================================================================================================
+# FUNCTION: show_view_validate_help
+# DESCRIPTION:
+#   Explains the --view validate command, which runs a series of diagnostic checks
+#   to identify potential inconsistencies in the system's user and group configurations,
+#   such as orphaned users or groups.
+#
+# PARAMETERS:
+#   None
+#
+# RETURNS:
+#   None
+# =================================================================================================
+show_view_validate_help() {
+    cat <<'EOF'
+========================================
+Help: --view validate
+========================================
 
-# ---
-# Function: show_compliance_help()
-# Description: Displays detailed help for the --compliance operation.
-# ---
-show_compliance_help() {
-    echo "Usage: user.sh --compliance"
-    echo ""
-    echo "The --compliance operation runs a series of automated checks to validate"
-    echo "system users and groups against a predefined set of security and"
-    echo "consistency rules."
-    echo ""
-    echo "Description:"
-    echo "  This command scans all regular users and groups, reporting any"
-    echo "  violations found. It is useful for periodic security audits and"
-    echo "  maintaining system health."
-    echo ""
-    echo "Checks Performed:"
-    echo "  Users:"
-    echo "    - Password Expiry: Ensures passwords expire within 90 days."
-    echo "    - Account Expiry: Checks for expired user accounts."
-    echo "    - Inactive Accounts: Flags users inactive for over 90 days."
-    echo "    - Sudo Password Policy: Enforces a 30-day password expiry for sudo users."
-    echo "    - Service Account Shell: Verifies service accounts have a non-login shell."
-    echo ""
-    echo "  Groups:"
-    echo "    - Empty Groups: Identifies groups with no members that are not a primary group for any user."
-    echo "    - Orphaned Primary Groups: Checks for groups assigned as a primary group to non-existent users."
-    echo ""
-    echo "Examples:"
-    echo "  Run all compliance checks:"
-    echo "    sudo ./user.sh --compliance"
-    echo ""
+Runs a series of checks to find inconsistencies and potential problems
+in the user and group configuration of the system.
+
+USAGE:
+  sudo ./user.sh --view validate [OPTIONS]
+
+OPTIONS:
+  --json         Output the validation report in JSON format.
+
+DESCRIPTION:
+  This command helps administrators identify common configuration issues, such as:
+  - Users whose primary group does not exist.
+  - Users with a login shell that is not listed in /etc/shells.
+  - Users with a home directory that does not exist or has incorrect permissions.
+  - Groups containing members that are not valid users.
+  - Duplicate User IDs (UIDs) or Group IDs (GIDs).
+
+EXAMPLE:
+  # Run the validation checks and display a human-readable report.
+  sudo ./user.sh --view validate
+
+========================================
+EOF
 }
 
+# =================================================================================================
+# FUNCTION: show_compliance_help
+# DESCRIPTION:
+#   Details the --compliance operation, which runs automated security and
+#   consistency checks against a predefined set of rules. It outlines the specific
+#   checks performed for both users and groups.
+#
+# PARAMETERS:
+#   None
+#
+# RETURNS:
+#   None
+# =================================================================================================
+show_compliance_help() {
+    cat <<'EOF'
+========================================
+Help: --compliance
+========================================
 
+Runs automated checks to validate system users and groups against a
+predefined set of security and consistency rules.
+
+USAGE:
+  sudo ./user.sh --compliance [OPTIONS]
+
+OPTIONS:
+  --json         Output the compliance report in JSON format.
+
+DESCRIPTION:
+  This command scans all regular users and groups, reporting any violations
+  found. It is useful for periodic security audits and maintaining system health.
+
+CHECKS PERFORMED:
+  Users:
+    - Password Expiry: Ensures passwords expire within the configured policy (e.g., 90 days).
+    - Account Expiry: Checks for user accounts that have already expired.
+    - Inactive Accounts: Flags users who have not logged in recently.
+    - Sudo Password Policy: Enforces a stricter password expiry for sudo users.
+    - Invalid Shell: Verifies that user shells are valid and secure.
+
+  Groups:
+    - Empty Groups: Identifies groups with no members.
+    - Orphaned Groups: Finds groups that are not a primary group for any user.
+
+EXAMPLE:
+  # Run all compliance checks and view the report.
+  sudo ./user.sh --compliance
+
+========================================
+EOF
+}
+
+# =================================================================================================
+# FUNCTION: show_specific_help
+# DESCRIPTION:
+#   Acts as a router, calling the appropriate help function based on the topic
+#   provided by the user. It handles various aliases (e.g., 'role', 'roles') and
+#   defaults to the general help message for unknown topics.
+#
+# PARAMETERS:
+#   $1 - topic: The help topic requested by the user (e.g., 'add', 'view').
+#
+# RETURNS:
+#   None
+# =================================================================================================
 show_specific_help() {
     local topic="$1"
     case "$topic" in
@@ -325,11 +495,14 @@ show_specific_help() {
         config|configuration)
             show_config_help
             ;;
-        view|view-*)
+        view)
             show_view_help
             ;;
-        compliance) 
-            show_compliance_help 
+        view-validate)
+            show_view_validate_help
+            ;;
+        compliance)
+            show_compliance_help
             ;;
         add|add-*)
             cat <<'EOF'
@@ -344,18 +517,20 @@ ADD USER
 ----------------------------------------
 
 USAGE:
-  sudo ./main.sh --add user --name <username> [OPTIONS]
-  sudo ./main.sh --add user --names <file.txt>
-  sudo ./main.sh --add user --input <file.json>
+  sudo ./user.sh --add user --name <username> [OPTIONS]
+  sudo ./user.sh --add user --names <file.txt>
+  sudo ./user.sh --add user --input <file.json>
 
 OPTIONS:
-  --comment <text>     Set the user's full name or description.
-  --groups <list>      Comma-separated list of groups to join.
-  --shell <path>       Specify the user's login shell.
-  --password <pass>    Set a specific password. Use 'random' for auto-generation.
+  --comment <text>     Set the user's full name (GECOS field).
+  --groups <list>      Comma-separated list of supplementary groups to join.
+  --shell <path>       Specify the user's login shell (e.g., /bin/bash).
+  --password <pass>    Set a password. Use 'random' for a secure, auto-generated one.
+  --uid <id>           Specify a custom User ID.
+  --create-home        Force creation of a home directory.
 
 TEXT FILE FORMAT (--names):
-  Each line contains one username.
+  A simple text file with one username per line.
 
 JSON FILE FORMAT (--input):
 {
@@ -375,20 +550,20 @@ ADD GROUP
 ----------------------------------------
 
 USAGE:
-  sudo ./main.sh --add group --name <groupname>
-  sudo ./main.sh --add group --names <file.txt>
-  sudo ./main.sh --add group --input <file.json>
+  sudo ./user.sh --add group --name <groupname> [OPTIONS]
+  sudo ./user.sh --add group --input <file.json>
 
-TEXT FILE FORMAT (--names):
-  Each line contains one group name.
+OPTIONS:
+  --gid <id>           Specify a custom Group ID.
+  --members <list>     Comma-separated list of users to add to the group.
 
 JSON FILE FORMAT (--input):
 {
   "groups": [
     {
       "name": "developers",
-      "action": "create",
-      "members": ["alice", "bob"] // Members must exist
+      "gid": 2000,
+      "members": ["alice", "bob"]
     }
   ]
 }
@@ -409,15 +584,14 @@ DELETE USER
 ----------------------------------------
 
 USAGE:
-  sudo ./main.sh --delete user --name <username> [MODE]
-  sudo ./main.sh --delete user --names <file.txt>
-  sudo ./main.sh --delete user --input <file.json>
+  sudo ./user.sh --delete user --name <username> [OPTIONS]
+  sudo ./user.sh --delete user --names <file.txt>
+  sudo ./user.sh --delete user --input <file.json>
 
-MODES (for single user deletion):
-  --check        Perform a dry-run and show potential issues.
-  --interactive  Prompt for confirmation before each destructive action.
-  --auto         Delete automatically (default for file-based deletion).
-  --force        Attempt to delete even if warnings are present.
+OPTIONS:
+  --backup             Create a backup of the user's home directory before deletion.
+  --force              Attempt to delete the user even if they are logged in.
+  --remove-home        Delete the user's home directory and mail spool.
 
 JSON FILE FORMAT (--input):
 {
@@ -425,7 +599,7 @@ JSON FILE FORMAT (--input):
     {
       "username": "unwanted_user",
       "backup": true,
-      "delete_home": true
+      "remove_home": true
     }
   ]
 }
@@ -435,20 +609,11 @@ DELETE GROUP
 ----------------------------------------
 
 USAGE:
-  sudo ./main.sh --delete group --name <groupname>
-  sudo ./main.sh --delete group --names <file.txt>
-  sudo ./main.sh --delete group --input <file.json>
+  sudo ./user.sh --delete group --name <groupname>
+  sudo ./user.sh --delete group --names <file.txt>
 
-NOTE: By default, groups are deleted automatically. System groups (GID < 1000)
-and groups that are the primary group for any user cannot be deleted.
-
-JSON FILE FORMAT (--input):
-{
-  "groups": [
-    { "name": "old_project", "action": "delete" },
-    { "name": "temp_team", "action": "delete" }
-  ]
-}
+NOTE: By default, groups are not deleted if they are the primary group for any user.
+System groups (GID < 1000) are protected from deletion.
 
 ========================================
 EOF
@@ -462,20 +627,22 @@ Help: --lock
 Locks a user account, preventing them from logging in.
 
 USAGE:
-  sudo ./main.sh --lock --name <username> [OPTIONS]
-  sudo ./main.sh --lock --input <file.json>
+  sudo ./user.sh --lock --name <username> [OPTIONS]
+  sudo ./user.sh --lock --names <file.txt>
+  sudo ./user.sh --lock --input <file.json>
 
 OPTIONS:
-  --reason <text>  Record a reason for the lock in the audit log.
+  --reason <text>      Record a reason for the lock in the audit log.
+  --unlock-after <T>   Schedule an automatic unlock after a duration (e.g., '1h', '30m').
 
 JSON FILE FORMAT (--input):
 {
-  "users": [
+  "locks": [
     {
       "username": "alice",
-      "reason": "Account compromised."
-    },
-    { "username": "bob" }
+      "reason": "Account compromised.",
+      "unlock_after": "24h"
+    }
   ]
 }
 
@@ -488,15 +655,16 @@ EOF
 Help: --unlock
 ========================================
 
-Unlocks a user account, allowing them to log in again.
+Unlocks a user account, re-enabling login access.
 
 USAGE:
-  sudo ./main.sh --unlock --name <username>
-  sudo ./main.sh --unlock --input <file.json>
+  sudo ./user.sh --unlock --name <username>
+  sudo ./user.sh --unlock --names <file.txt>
+  sudo ./user.sh --unlock --input <file.json>
 
 JSON FILE FORMAT (--input):
 {
-  "users": [
+  "unlocks": [
     { "username": "alice" },
     { "username": "bob" }
   ]

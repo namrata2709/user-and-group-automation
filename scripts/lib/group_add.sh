@@ -1,83 +1,104 @@
 #!/usr/bin/env bash
-# ================================================
-# Group Add Module - REFACTORED
-# Version: 2.1.0
-# ================================================
-# Single add_group logic, multiple format parsers
-# ================================================
 
-# ============================================
-# CORE FUNCTION - Single group creation logic
-# ============================================
+# =================================================================================================
+#
+# Group Addition Module
+#
+# Description:
+#   This module is responsible for creating new user groups. It provides a core function for
+#   adding a single group, along with parsers for bulk creation from text or JSON files.
+#   It is designed to be invoked by the main 'user.sh' script.
+#
+# =================================================================================================
+
+# =================================================================================================
+# FUNCTION: add_single_group
+# DESCRIPTION:
+#   The core function for creating a single new user group. It validates the group name,
+#   constructs and executes the 'groupadd' command, and optionally adds a list of members
+#   to the newly created group.
+#
+# PARAMETERS:
+#   $1 - groupname: The name of the group to create.
+#   $2 - gid: (Optional) The numeric group ID (GID) for the new group.
+#   $3 - members: (Optional) A comma-separated string of usernames to add to the group.
+#
+# RETURNS:
+#   0 if the group is created successfully.
+#   1 if there is a failure (e.g., group exists, validation fails, command fails).
+#   Returns 1 for partial success (e.g., group created but adding members fails).
+# =================================================================================================
 add_single_group() {
     local groupname="$1"
-    local members="${2:-}"
-    
-    if ! validate_name "$groupname" "group"; then
-        log_action "add_group" "$groupname" "FAILED" "Invalid groupname"
+    local gid="$2"
+    local members="$3"
+
+    # --- Validation ---
+    if is_reserved_group "$groupname"; then
+        log_action "ERROR" "Group creation failed: '$groupname' is a reserved group name."
         return 1
     fi
-    
-    if getent group "$groupname" >/dev/null 2>&1; then
-        echo "${ICON_WARNING} Group '$groupname' already exists. Skipping..."
-        log_action "add_group" "$groupname" "SKIPPED" "Already exists"
+
+    if getent group "$groupname" &>/dev/null; then
+        log_action "ERROR" "Group creation failed: Group '$groupname' already exists."
         return 1
     fi
-    
-    if [ "$DRY_RUN" = true ]; then
-        echo "${ICON_SEARCH} [DRY-RUN] Would create group: $groupname"
-        [ -n "$members" ] && echo "   - Members: $members"
-        return 0
-    fi
-    
-    echo "${ICON_GROUP} Creating group: $groupname"
-    if sudo groupadd "$groupname" 2>/dev/null; then
-        echo "   ${ICON_SUCCESS} Group created"
-        
+
+    # --- Build groupadd command ---
+    local cmd="sudo groupadd"
+    local opts=()
+    [ -n "$gid" ] && opts+=("-g" "$gid")
+
+    # --- Execute groupadd ---
+    log_action "INFO" "Attempting to create group '$groupname'..."
+    if eval "$cmd ${opts[*]} '$groupname'"; then
+        log_action "SUCCESS" "Group '$groupname' created successfully."
+
+        # --- Add members if provided ---
         if [ -n "$members" ]; then
-            local success=0
-            local failed=0
-            
-            IFS=',' read -ra member_array <<< "$members"
-            for member in "${member_array[@]}"; do
-                member=$(echo "$member" | xargs)
-                
+            local failed_members=()
+            IFS=',' read -ra member_list <<< "$members"
+            for member in "${member_list[@]}"; do
                 if ! id "$member" &>/dev/null; then
-                    echo "   ${ICON_WARNING} User '$member' does not exist, skipping"
-                    ((failed++))
-                    continue
-                fi
-                
-                if sudo usermod -aG "$groupname" "$member" 2>/dev/null; then
-                    echo "   ${ICON_SUCCESS} Added member: $member"
-                    ((success++))
+                    log_action "WARNING" "Cannot add member '$member' to group '$groupname': User does not exist."
+                    failed_members+=("$member")
                 else
-                    echo "   ${ICON_ERROR} Failed to add member: $member"
-                    ((failed++))
+                    if ! sudo usermod -a -G "$groupname" "$member"; then
+                        log_action "ERROR" "Failed to add member '$member' to group '$groupname'."
+                        failed_members+=("$member")
+                    fi
                 fi
             done
-            
-            if [ $success -gt 0 ]; then
-                echo "   👥 Members added: $success"
-            fi
-            if [ $failed -gt 0 ]; then
-                echo "   ${ICON_WARNING} Failed to add: $failed"
+
+            if [ ${#failed_members[@]} -gt 0 ]; then
+                log_action "WARNING" "Group '$groupname' created, but failed to add the following members: ${failed_members[*]}."
+                return 1 # Partial success
+            else
+                log_action "INFO" "All specified members added to group '$groupname'."
             fi
         fi
-        
-        local gid=$(getent group "$groupname" | cut -d: -f3)
-        log_action "add_group" "$groupname" "SUCCESS" "GID: $gid, Members: $members"
         return 0
     else
-        echo "   ${ICON_ERROR} Failed to create group: $groupname"
-        log_action "add_group" "$groupname" "FAILED" "groupadd command failed"
+        log_action "ERROR" "Failed to create group '$groupname'."
         return 1
     fi
 }
 
-# ============================================
-# PARSER: Text File Format
-# ============================================
+# =================================================================================================
+# FUNCTION: parse_groups_from_text
+# DESCRIPTION:
+#   Parses a simple text file to add multiple groups. Each line in the file is treated as a
+#   group name to be created.
+#
+# INPUT FORMAT (TEXT):
+#   One group name per line. Lines starting with '#' are ignored.
+#
+# PARAMETERS:
+#   $1 - group_file: The absolute path to the text file.
+#
+# RETURNS:
+#   0 on completion. Prints a summary of the operation.
+# =================================================================================================
 parse_groups_from_text() {
     local group_file="$1"
     
@@ -113,24 +134,39 @@ parse_groups_from_text() {
     return 0
 }
 
-# ============================================
-# PARSER: JSON Format
-# ============================================
+# =================================================================================================
+# FUNCTION: parse_groups_from_json
+# DESCRIPTION:
+#   Parses a JSON file to add multiple groups. It uses 'jq' to process an array of group
+#   objects. This function is intended for machine-readable input.
+#
+# INPUT FORMAT (JSON):
+#   A JSON object with a top-level "groups" array. Each object can specify a name, GID,
+#   and a list of members.
+#   {
+#     "groups": [
+#       { "name": "developers", "gid": "2001", "members": ["jdoe", "asmith"] },
+#       { "name": "testers" }
+#     ]
+#   }
+#
+# PARAMETERS:
+#   $1 - json_file: The absolute path to the JSON file.
+#
+# RETURNS:
+#   0 on completion. Prints a summary of the operation.
+#   1 if 'jq' is not installed or the JSON is invalid.
+# =================================================================================================
 parse_groups_from_json() {
     local json_file="$1"
     
     if ! command -v jq &> /dev/null; then
-        echo "${ICON_ERROR} jq not installed. Install with: sudo apt install jq"
-        return 1
-    fi
-    
-    if ! jq empty "$json_file" 2>/dev/null; then
-        echo "${ICON_ERROR} Invalid JSON format: $json_file"
+        echo "${ICON_ERROR} 'jq' is not installed. Please install it to process JSON files."
         return 1
     fi
     
     if ! jq -e '.groups' "$json_file" >/dev/null 2>&1; then
-        echo "${ICON_ERROR} Invalid JSON structure - missing 'groups' array"
+        echo "${ICON_ERROR} Invalid JSON structure. The file must contain a 'groups' array."
         return 1
     fi
     
@@ -141,16 +177,10 @@ parse_groups_from_json() {
         ((count++))
         
         local groupname=$(echo "$group_json" | jq -r '.name')
-        local action=$(echo "$group_json" | jq -r '.action // "create"')
-        local members=$(echo "$group_json" | jq -r '.members[]?' 2>/dev/null | paste -sd, | sed 's/,$//')
+        local gid=$(echo "$group_json" | jq -r '.gid // ""')
+        local members=$(echo "$group_json" | jq -r '(.members // []) | join(",")')
         
-        if [ "$action" != "create" ]; then
-            echo "${ICON_WARNING} Skipping group '$groupname' - action is '$action' (not 'create')"
-            ((skipped++))
-            continue
-        fi
-        
-        if add_single_group "$groupname" "$members"; then
+        if add_single_group "$groupname" "$gid" "$members"; then
             ((created++))
         else
             if getent group "$groupname" >/dev/null 2>&1; then
@@ -170,9 +200,19 @@ parse_groups_from_json() {
     return 0
 }
 
-# ============================================
-# PUBLIC INTERFACE - Called from user.sh
-# ============================================
+# =================================================================================================
+# FUNCTION: add_groups
+# DESCRIPTION:
+#   The main public entry point for the group addition feature. It auto-detects the input
+#   file format (text or JSON) and calls the appropriate parser.
+#
+# PARAMETERS:
+#   $1 - group_file: The path to the input file.
+#   $2 - format: (Optional) The format of the file ("text" or "json"). Auto-detects if omitted.
+#
+# RETURNS:
+#   0 on success, 1 on failure.
+# =================================================================================================
 add_groups() {
     local group_file="$1"
     local format="${2:-auto}"
@@ -200,17 +240,17 @@ add_groups() {
             parse_groups_from_text "$group_file"
             ;;
         *)
-            echo "${ICON_ERROR} Unknown format: $format"
-            echo "Supported formats: text, json"
+            echo "${ICON_ERROR} Unknown format: $format. Supported formats: text, json."
             return 1
             ;;
     esac
 }
 
-# ============================================
+# =================================================================================================
 # LEGACY COMPATIBILITY
-# ============================================
-# Keep old function names for backward compatibility
+# =================================================================================================
+
+# Keep old function name for backward compatibility.
 add_groups_from_json() {
     parse_groups_from_json "$1"
 }

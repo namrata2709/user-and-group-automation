@@ -58,14 +58,12 @@ LOG_DIR="$SCRIPT_DIR/log"
 # The config directory is at the project root, which is one level above the scripts directory.
 CONFIG_DIR="$SCRIPT_DIR/../config"
 
-
-
 # --- Configuration Loading ---
 # Loads the main configuration file. Exits if not found.
-if [ -f "$CONFIG_DIR/config.sh" ]; then
-    source "$CONFIG_DIR/config.sh"
+if [ -f "$CONFIG_DIR/user_mgmt.conf" ]; then
+    source "$CONFIG_DIR/user_mgmt.conf"
 else
-    echo "Error: Configuration file 'config.sh' not found in '$CONFIG_DIR'."
+    echo "Error: Configuration file 'user_mgmt.conf' not found in '$CONFIG_DIR'."
     exit 1
 fi
 

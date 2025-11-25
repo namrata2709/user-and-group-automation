@@ -53,7 +53,7 @@ BUILD_DATE="2024-07-29"
 # --- Path Definitions ---
 # Ensures that the script can be run from any directory by setting the base path.
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-LIB_DIR="$SCRIPT_DIR/scripts/lib"
+LIB_DIR="$SCRIPT_DIR/lib"
 
 # Source all library files
 for lib_file in "$LIB_DIR"/*.sh; do
@@ -735,7 +735,7 @@ execute_operation() {
 
     case "$operation" in
         "add")
-            add_user_main "$operation" "$@"
+            add_user "$operation" "$@"
             ;;
         "add-group")
             add_group_main "$operation" "$@"

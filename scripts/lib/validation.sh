@@ -68,6 +68,28 @@ validate_name() {
     return 0
 }
 
+# ------------------------------------------------------------------------------
+# FUNCTION: _validate_input_file()
+#
+# DESCRIPTION:
+#   Checks if a file exists and is a regular file.
+#
+# ARGUMENTS:
+#   $1: file_path - The path to the file.
+#
+# RETURNS:
+#   0 (true) if the file exists.
+#   1 (false) if it does not, printing an error message.
+# ------------------------------------------------------------------------------
+_validate_input_file() {
+    local file_path="$1"
+    if [[ ! -f "$file_path" ]]; then
+        echo "${ICON_ERROR} Input file not found: $file_path" >&2
+        return 1
+    fi
+    return 0
+}
+
 # ==============================================================================
 # SECTION: DATA TYPE VALIDATION
 # ==============================================================================

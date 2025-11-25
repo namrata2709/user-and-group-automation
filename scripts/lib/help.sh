@@ -470,6 +470,71 @@ EXAMPLE:
 EOF
 }
 
+show_add_help() {
+    cat <<'EOF'
+========================================
+Help: --add user | group
+========================================
+
+Adds new users or groups to the system.
+
+----------------------------------------
+ADD USER
+----------------------------------------
+
+USAGE:
+  sudo ./user.sh --add user --file <file>
+
+The file can be a simple text file with one username per line, or a JSON
+file for more complex scenarios. The script automatically detects the file
+type.
+
+TEXT FILE FORMAT:
+  A simple text file with one username per line. Comments starting with #
+  are ignored.
+
+  # This is a comment
+  user1
+  user2
+
+JSON FILE FORMAT:
+{
+  "users": [
+    {
+      "username": "alice",
+      "comment": "Alice Smith, Developer",
+      "groups": ["developers", "sudo"],
+      "shell": "/bin/bash",
+      "password_policy": { "type": "random" }
+    }
+  ]
+}
+
+----------------------------------------
+ADD GROUP
+----------------------------------------
+
+USAGE:
+  sudo ./user.sh --add group --file <file>
+
+The file can be a simple text file with one group name per line, or a
+JSON file.
+
+JSON FILE FORMAT:
+{
+  "groups": [
+    {
+      "name": "developers",
+      "gid": 2000,
+      "members": ["alice", "bob"]
+    }
+  ]
+}
+
+========================================
+EOF
+}
+
 # =================================================================================================
 # FUNCTION: show_specific_help
 # DESCRIPTION:
@@ -505,71 +570,7 @@ show_specific_help() {
             show_compliance_help
             ;;
         add|add-*)
-            cat <<'EOF'
-========================================
-Help: --add user | group
-========================================
-
-Adds new users or groups to the system.
-
-----------------------------------------
-ADD USER
-----------------------------------------
-
-USAGE:
-  sudo ./user.sh --add user --name <username> [OPTIONS]
-  sudo ./user.sh --add user --names <file.txt>
-  sudo ./user.sh --add user --input <file.json>
-
-OPTIONS:
-  --comment <text>     Set the user's full name (GECOS field).
-  --groups <list>      Comma-separated list of supplementary groups to join.
-  --shell <path>       Specify the user's login shell (e.g., /bin/bash).
-  --password <pass>    Set a password. Use 'random' for a secure, auto-generated one.
-  --uid <id>           Specify a custom User ID.
-  --create-home        Force creation of a home directory.
-
-TEXT FILE FORMAT (--names):
-  A simple text file with one username per line.
-
-JSON FILE FORMAT (--input):
-{
-  "users": [
-    {
-      "username": "alice",
-      "comment": "Alice Smith, Developer",
-      "groups": ["developers", "sudo"],
-      "shell": "/bin/bash",
-      "password_policy": { "type": "random" }
-    }
-  ]
-}
-
-----------------------------------------
-ADD GROUP
-----------------------------------------
-
-USAGE:
-  sudo ./user.sh --add group --name <groupname> [OPTIONS]
-  sudo ./user.sh --add group --input <file.json>
-
-OPTIONS:
-  --gid <id>           Specify a custom Group ID.
-  --members <list>     Comma-separated list of users to add to the group.
-
-JSON FILE FORMAT (--input):
-{
-  "groups": [
-    {
-      "name": "developers",
-      "gid": 2000,
-      "members": ["alice", "bob"]
-    }
-  ]
-}
-
-========================================
-EOF
+            show_add_help
             ;;
         delete|delete-*)
             cat <<'EOF'

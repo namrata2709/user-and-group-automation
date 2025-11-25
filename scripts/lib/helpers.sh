@@ -23,6 +23,34 @@
 #
 # ==============================================================================
 
+# =============================================================================
+# SECTION: DEPENDENCY CHECKS
+# =============================================================================
+
+# ------------------------------------------------------------------------------
+# FUNCTION: _ensure_jq()
+#
+# DESCRIPTION:
+#   Checks if 'jq' is installed and executable. If not, it prints an error
+#   and exits.
+#
+# GLOBALS:
+#   ICON_ERROR (read)
+#
+# ARGUMENTS:
+#   None
+#
+# RETURNS:
+#   0 if jq is found.
+#   Exits with status 1 if jq is not found.
+# ------------------------------------------------------------------------------
+_ensure_jq() {
+    if ! command -v jq &> /dev/null; then
+        echo "${ICON_ERROR} 'jq' is not installed or not in PATH. Please install it to process JSON files." >&2
+        exit 1
+    fi
+}
+
 # ==============================================================================
 # SECTION: USER AND GROUP IDENTITY CHECKS
 # ==============================================================================

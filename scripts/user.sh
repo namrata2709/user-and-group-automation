@@ -454,12 +454,7 @@ execute_operation() {
             [ -z "$FILE" ] && { echo "${ICON_ERROR} Missing --names <file> or --input <file>"; exit 1; }
             case "$ACTION" in
                 user)
-                    # Handles both JSON and text input for adding users.
-                    if [ "$JSON_INPUT" = true ]; then
-                        add_users_from_json "$FILE"
-                    else
-                        add_users "$FILE"
-                    fi
+                    add_users "$FILE"
                     ;;
                 group)
                     add_groups "$FILE"

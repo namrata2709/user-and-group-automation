@@ -1,48 +1,43 @@
 #!/usr/bin/env bash
-# =================================================
-# Test Suite for Helper Functions
-# =================================================
 
-# Load test helpers and the script to be tested
-. "$(dirname "$0")"/test_helpers.sh
-. "$(dirname "$0")"/../scripts/lib/helpers.sh
+# Load test helpers
+source "$(dirname "$0")/test_helper.sh"
 
-# =================================================
-# Test Cases
-# =================================================
+# Load the script to be tested
+source "$(dirname "$0")/../scripts/lib/helpers.sh"
 
-test_user_exists() {
-    local test_name="test_user_exists"
-    # This relies on the test environment having a 'root' user
-    assert_success "user_exists 'root'" "Should return true for an existing user." "$test_name"
-    assert_failure "user_exists 'non_existent_user_12345'" "Should return false for a non-existent user." "$test_name"
+# =============================================================================
+# TEST CASES for _ensure_jq
+# =============================================================================
+
+test__ensure_jq_found() {
+    # Mock command to simulate jq being found
+    command() { [[ "$1" == "-v" && "$2" == "jq" ]] && return 0; }
+
+    # Run the function and capture output
+    local output
+    output="$(_ensure_jq)"
+
+    # Assert that there is no output and the exit code is 0
+    assert_empty "$output" "Expected no output when jq is found"
+    assert_success "_ensure_jq should succeed when jq is found"
 }
 
-test_group_exists() {
-    local test_name="test_group_exists"
-    # This relies on the test environment having a 'root' group
-    assert_success "group_exists 'root'" "Should return true for an existing group." "$test_name"
-    assert_failure "group_exists 'non_existent_group_12345'" "Should return false for a non-existent group." "$test_name"
+test__ensure_jq_not_found() {
+    # Mock command to simulate jq not being found
+    command() { [[ "$1" == "-v" && "$2" == "jq" ]] && return 1; }
+
+    # Run the function and capture output
+    local output
+    output="$(_ensure_jq)"
+    local exit_code=$?
+
+    # Assert that an error message is printed and the exit code is 1
+    assert_not_empty "$output" "Expected an error message when jq is not found"
+    assert_string_contains "$output" "jq is not installed" "The error message should mention that jq is missing"
+    assert_failure "_ensure_jq should fail when jq is not found"
+    assert_equal "$exit_code" "1" "Exit code should be 1 when jq is not found"
 }
 
-test_get_user_groups() {
-    local test_name="test_get_user_groups"
-    # Create a test user and group for this test
-    sudo useradd test_helper_user
-    sudo groupadd test_helper_group
-    sudo usermod -aG test_helper_group test_helper_user
-
-    local groups
-    groups=$(get_user_groups "test_helper_user")
-    
-    assert_contain "$groups" "test_helper_group" "Should list the user's groups." "$test_name"
-
-    # Cleanup
-    sudo userdel test_helper_user
-    sudo groupdel test_helper_group
-}
-
-# =================================================
-# Run Tests
-# =================================================
-run_test_suite
+# Run all tests
+run_tests

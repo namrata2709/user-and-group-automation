@@ -700,63 +700,84 @@ execute_operation() {
 #   Finally, it logs the completion of the script.
 # =================================================================================================
 main() {
-    if [[ "$1" == "help" || $# -eq 0 ]]; then
-        if [[ -n "$2" ]]; then
-            _display_help "$2"
-        else
-            show_general_help
-        fi
-        return 0
+    # Ensure at least one command is given
+    if [ "$#" -eq 0 ]; then
+        error_message "No command provided."
+        show_general_help
+        return 1
     fi
 
-    # For all other commands, parse arguments and execute the operation
-    parse_arguments "$@"
-    execute_operation
-}
-
-execute_command() {
     local command="$1"
     shift
-    case "$command" in
-        add)
-            add_user_main "$@"
+
+    # Centralized command execution
+    execute_operation "$command" "$@"
+}
+
+# ==============================================================================
+# COMMAND EXECUTION
+# ==============================================================================
+execute_operation() {
+    local operation="$1"
+    shift
+
+    case "$operation" in
+        "add")
+            add_user_main "$operation" "$@"
             ;;
-        add-group)
-            add_group_main "$@"
+        "add-group")
+            add_group_main "$operation" "$@"
             ;;
-        update)
+        "update")
             update_user_main "$@"
             ;;
-        update-group)
+        "update-group")
             update_group_main "$@"
             ;;
-        delete)
+        "delete")
             delete_user_main "$@"
             ;;
-        delete-group)
+        "delete-group")
             delete_group_main "$@"
             ;;
-        lock)
+        "lock")
             lock_user_main "$@"
             ;;
-        view)
+        "view")
             view_main "$@"
             ;;
-        export)
-            export_main "$@"
+        "export")
+            export_data "$@"
             ;;
-        report)
+        "report")
             report_main "$@"
             ;;
-        compliance)
+        "compliance")
             compliance_main "$@"
             ;;
+        "help")
+            if [ -n "$1" ]; then
+                _display_help "$1"
+            else
+                show_general_help
+            fi
+            ;;
         *)
-            error_message "Unknown command: $command"
+            error_message "Unknown command: $operation"
             show_general_help
             return 1
             ;;
     esac
 }
 
+# ==============================================================================
+# SCRIPT ENTRYPOINT
+# ==============================================================================
+#
+# This is the main entry point of the script.
+# It sources required libraries and then calls the main function.
+#
+# ==============================================================================
+
+# Call the main function with all provided arguments
 main "$@"

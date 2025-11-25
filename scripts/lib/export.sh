@@ -222,48 +222,48 @@ export_all_json() {
 # =============================================================================
 # PUBLIC: Main Export Dispatcher
 # =============================================================================
-export_data() {
+
+function export_data() {
     local export_type="$1"
-    local output_file="$2"
-    local format="${3:-table}"
-    
-    if [ -z "$output_file" ]; then
-        error_message "Missing --output <file>"
+    local format="$2"
+    local output_file="$3"
+
+    if [ -z "$export_type" ] || [ -z "$format" ] || [ -z "$output_file" ]; then
+        error_message "Usage: export_data <users|groups|all> <csv|json|table|tsv> <output_file>"
         return 1
     fi
-    
-    display_banner "Exporting Data"
-    info_message "Type:    $export_type"
-    info_message "Format:  $format"
-    info_message "Output:  $output_file"
-    echo ""
-    
-    local export_function_name="export_${export_type}_${format}";
+
+    # Validate export type
+    if [[ "$export_type" != "users" && "$export_type" != "groups" && "$export_type" != "all" ]]; then
+        error_message "Invalid export type. Must be 'users', 'groups', or 'all'."
+        return 1
+    fi
+
+    # Validate format
+    if [[ "$format" != "csv" && "$format" != "json" && "$format" != "table" && "$format" != "tsv" ]]; then
+        error_message "Invalid format. Must be 'csv', 'json', 'table', or 'tsv'."
+        return 1
+    fi
 
     if [[ "$export_type" == "all" && "$format" != "json" ]]; then
         error_message "'all' export only supports JSON format"
         return 1
     fi
 
+    info_message "Exporting $export_type to $output_file in $format format..."
+
+    local export_function_name="export_${export_type}_${format}"
+
     if declare -F "$export_function_name" > /dev/null; then
         "$export_function_name" "$output_file"
     else
         error_message "Invalid export type or format combination: $export_type, $format"
-        info_message "Valid user formats: csv, json, table, tsv"
-        info_message "Valid group formats: csv, json, table, tsv"
-        info_message "Valid 'all' format: json"
         return 1
     fi
-    
-    if [ -f "$output_file" ]; then
-        local file_size=$(du -h "$output_file" | cut -f1)
-        success_message "Export complete"
-        info_message "File: $output_file"
-        info_message "Size: $file_size"
-        log_action "export_$export_type" "$output_file" "SUCCESS" "format=$format, size=$file_size"
+
+    if [ $? -eq 0 ]; then
+        success_message "Export completed successfully."
     else
-        error_message "Export failed"
-        log_action "export_$export_type" "$output_file" "FAILURE" "format=$format"
-        return 1
+        error_message "Export failed."
     fi
 }

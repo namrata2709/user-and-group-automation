@@ -402,12 +402,12 @@ aggregate_users() {
                 local op="${BASH_REMATCH[1]}"
                 local field="${BASH_REMATCH[2]}"
                 
-                local values=$(echo -e "$group_items" | grep -oP "$field=\K[^|]+")
+                local values=$(echo -e "$group_items" | grep -oP "$field=\\K[^|]+")
                 
                 local result
                 case "$op" in
                     sum) result=$(echo "$values" | paste -sd+ | bc) ;;
-                    avg) result=$(echo "$values" | { sum=$(paste -sd+ | bc); count=$(wc -l); echo "scale=2; $sum / $count" | bc; } ) ;;
+                    avg) result=$(echo "$values" | { sum=$(paste -sd+ | bc); count=$(wc -l); echo "scale=2; $sum / $count" | bc; }) ;;
                     min) result=$(echo "$values" | sort -n | head -1) ;;
                     max) result=$(echo "$values" | sort -n | tail -1) ;;
                 esac

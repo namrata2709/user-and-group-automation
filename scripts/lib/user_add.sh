@@ -190,9 +190,36 @@ _parse_users_from_text() {
 # ------------------------------------------------------------------------------
 _add_single_user() {
     local username=$1
-    local primary_group=$2
-    local secondary_groups=$3
-    local shell=${4:-"/bin/bash"}
+    shift
+
+    # Initialize variables to default values
+    local primary_group=""
+    local secondary_groups=""
+    local shell=""
+    local comment=""
+    local expiry_date=""
+    local password_policy=""
+    local home_dir=""
+    local no_create_home=false
+    local system_user=false
+    local uid=""
+
+    # Parse optional arguments
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --group) primary_group=$2; shift 2 ;;
+            --groups) secondary_groups=$2; shift 2 ;;
+            --shell) shell=$2; shift 2 ;;
+            --comment) comment=$2; shift 2 ;;
+            --expiry) expiry_date=$2; shift 2 ;;
+            --password-policy) password_policy=$2; shift 2 ;;
+            --home) home_dir=$2; shift 2 ;;
+            --no-create-home) no_create_home=true; shift ;;
+            --system) system_user=true; shift ;;
+            --uid) uid=$2; shift 2 ;;
+            *) error_message "Unknown option for add: $1"; return $SOFT_FAILURE ;;
+        esac
+    done
 
     # Validate username
     if ! validate_name "$username" "user"; then

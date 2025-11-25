@@ -117,6 +117,7 @@ source "$LIB_DIR/group_delete.sh"
 source "$LIB_DIR/group_update.sh"
 source "$LIB_DIR/compliance.sh"
 source "$LIB_DIR/json_input.sh"
+source "install.sh"
 
 # --- Global Variables ---
 # General script behavior flags and parameters.

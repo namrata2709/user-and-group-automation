@@ -5,7 +5,7 @@
 
 # Load test helpers and the script to be tested
 . "$(dirname "$0")"/test_helpers.sh
-. "$(dirname "$0")"/../scripts/lib/expression_parser.sh
+. "$(dirname "$0")"/../scripts/lib/utils/expression_parser.sh
 
 # =================================================
 # Mock Data

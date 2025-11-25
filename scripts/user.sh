@@ -82,11 +82,20 @@ ICON_EXPORT="📤"
 
 # --- Module Loading ---
 # Sources all necessary library files for modular functionality.
-source "$LIB_DIR/log.sh"
-source "$LIB_DIR/utils.sh"
+source "$SCRIPT_DIR/lib/utils/output_helpers.sh"
+source "$SCRIPT_DIR/lib/utils/validation.sh"
+source "$SCRIPT_DIR/lib/utils/logging.sh"
+source "$SCRIPT_DIR/lib/utils/dependency.sh"
+source "$SCRIPT_DIR/lib/utils/identity.sh"
+source "$SCRIPT_DIR/lib/utils/status.sh"
+source "$SCRIPT_DIR/lib/utils/resources.sh"
+source "$SCRIPT_DIR/lib/utils/password.sh"
+source "$SCRIPT_DIR/lib/utils/expression_parser.sh"
+source "$SCRIPT_DIR/lib/utils/config_validation.sh"
+source "$SCRIPT_DIR/lib/utils/filesystem.sh"
+source "$SCRIPT_DIR/lib/utils/string.sh"
 source "$LIB_DIR/help.sh"
 source "$LIB_DIR/view.sh"
-source "$LIB_DIR/validation.sh"
 source "$LIB_DIR/report.sh"
 source "$LIB_DIR/json_input.sh"
 source "$LIB_DIR/user_add.sh"
@@ -98,9 +107,6 @@ source "$LIB_DIR/group_delete.sh"
 source "$LIB_DIR/group_update.sh"
 source "$LIB_DIR/export.sh"
 source "$LIB_DIR/compliance.sh"
-source "$LIB_DIR/expression_parser.sh"
-source "$LIB_DIR/validation_rules.sh"
-
 # --- Global Variables ---
 # General script behavior flags and parameters.
 OPERATION=""

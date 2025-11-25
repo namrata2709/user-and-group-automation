@@ -1,42 +1,46 @@
-#!/bin/bash
-# =================================================================================================
+#!/usr/bin/env bash
+# ==============================================================================
 #
-# LIBRARY: group_add
+#          FILE: group_add.sh
 #
-# This library contains functions for adding groups to the system. It supports adding
-# single groups, as well as batch additions from text or JSON files.
+#         USAGE: source group_add.sh
 #
-# It is designed to be sourced and used by other scripts.
+#   DESCRIPTION: A library of functions for adding groups to the system. It
+#                supports adding single groups, as well as batch additions from
+#                text or JSON files. It is designed to be sourced and used by
+#                other scripts, providing a structured way to manage group
+#                creation.
 #
-# -------------------------------------------------------------------------------------------------
+#       OPTIONS: ---
+#  REQUIREMENTS: bash, coreutils, jq, getent
+#          BUGS: ---
+#         NOTES: This script is not meant to be executed directly.
+#       AUTHOR: Your Name, your.email@example.com
+# ORGANIZATION: Your Company
+#      CREATED: YYYY-MM-DD
+#     REVISION: 1.2.0
 #
-# FUNCTIONS:
-#   - add_single_group: Core logic for creating a single group.
-#   - parse_groups_from_text: Parses and adds groups from a text file.
-#   - parse_groups_from_json: Parses and adds groups from a JSON file.
-#   - add_groups: Main entry point for all group addition operations.
-#
-# USAGE:
-#   This script is not meant to be executed directly. It should be sourced by other scripts.
-#
-# =================================================================================================
+# ==============================================================================
 
-# =================================================================================================
-# PRIVATE HELPER FUNCTIONS
-# =================================================================================================
+# ==============================================================================
+# SECTION: PRIVATE HELPER FUNCTIONS
+# ==============================================================================
 
-# -------------------------------------------------------------------------------------------------
-# FUNCTION: _add_group_status_to_array
+# ------------------------------------------------------------------------------
+# FUNCTION: _add_group_status_to_array()
+#
 # DESCRIPTION:
-#   A helper function to build a standardized group status JSON object and add it to a
-#   specified array. This centralizes JSON construction for group operations.
+#   A private helper to build a standardized group status JSON object and add it
+#   to a specified array. This centralizes the creation of structured output
+#   for group operations, making it easier to track the status of each
+#   addition (success, skipped, or failed).
 #
-# PARAMETERS:
-#   $1 - target_array (nameref): The name of the array to add the JSON object to.
-#   $2 - groupname: The name of the group.
-#   $3 - status: The status of the operation (e.g., "success", "skipped", "failed").
-#   $4 - For "skipped" or "failed": The reason for the status.
-# -------------------------------------------------------------------------------------------------
+# ARGUMENTS:
+#   $1 (nameref): The name of the array to which the JSON object will be added.
+#   $2: The name of the group.
+#   $3: The status of the operation (e.g., "success", "skipped", "failed").
+#   $4: The reason for a "skipped" or "failed" status.
+# ------------------------------------------------------------------------------
 _add_group_status_to_array() {
     local -n target_array=$1
     local groupname=$2
@@ -65,27 +69,27 @@ _add_group_status_to_array() {
 # CORE FUNCTIONS
 # =================================================================================================
 
-# =================================================================================================
-# FUNCTION: add_single_group
-# DESCRIPTION:
-#   Creates a single group on the system. It validates the group name and checks if the
-#   group already exists.
+# ------------------------------------------------------------------------------
+# FUNCTION: _add_single_group()
 #
-# PARAMETERS:
-#   $1 - groupname: The name of the group to create.
+# DESCRIPTION:
+#   Creates a single group on the system after validating its name and ensuring
+#   it does not already exist. This function serves as the fundamental building
+#   block for all group creation operations.
+#
+# ARGUMENTS:
+#   $1: The name of the group to create.
 #
 # GLOBALS:
-#   DRY_RUN: If set to "true", logs the intended action instead of executing.
-#
-# OUTPUTS:
-#   Logs the result of the operation.
+#   DRY_RUN (read): If set to "true", logs the intended action without making
+#                   any actual changes to the system.
 #
 # RETURNS:
-#   0 - Success
-#   1 - Hard failure (invalid name, command failed)
-#   2 - Soft failure (group already exists)
-# -------------------------------------------------------------------------------------------------
-add_single_group() {
+#   0: On success or if in dry-run mode.
+#   1: On hard failure (e.g., invalid name, `groupadd` command fails).
+#   2: On soft failure (e.g., the group already exists).
+# ------------------------------------------------------------------------------
+_add_single_group() {
     local groupname=$1
 
     # Validate group name
@@ -116,108 +120,39 @@ add_single_group() {
     fi
 }
 
-# =================================================================================================
-# PRIVATE HELPER FUNCTIONS
-# =================================================================================================
-
-# -------------------------------------------------------------------------------------------------
-# FUNCTION: parse_groups_from_text
-# DESCRIPTION:
-#   Parses a text file where each line is a group name and adds each group.
+# ------------------------------------------------------------------------------
+# FUNCTION: _add_groups_core()
 #
-# PARAMETERS:
-#   $1 - filename: The path to the text file.
+# DESCRIPTION:
+#   A core private function to process a list of group names from a unified
+#   input stream (stdin). It handles the entire lifecycle for batch group
+#   addition.
+#
+# ARGUMENTS:
+#   None. Reads group names from stdin.
 #
 # OUTPUTS:
-#   Logs the status of each group addition.
-# -------------------------------------------------------------------------------------------------
-parse_groups_from_text() {
-    local filename=$1
+#   Logs the status of the batch operation and the result of each group
+#   addition.
+# ------------------------------------------------------------------------------
+_add_groups_core() {
     local created_groups=()
     local existing_groups=()
     local failed_groups=()
 
-    # Batch Validation Phase
-    log_action "INFO" "Starting batch validation for groups from text file..."
-    local validation_errors=0
-    while IFS= read -r groupname || [[ -n "$groupname" ]]; do
+    log_action "INFO" "Starting group creation..."
+    while IFS= read -r groupname; do
         if [[ -z "$groupname" ]]; then
             continue
         fi
-        if ! validate_name "$groupname" "group"; then
-            log_action "ERROR" "Validation failed: Invalid group name format: '$groupname'"
-            ((validation_errors++))
-        fi
-    done < "$filename"
-
-    if [[ $validation_errors -gt 0 ]]; then
-        log_action "ERROR" "Batch validation failed with $validation_errors error(s). Aborting."
-        return 1
-    fi
-    log_action "SUCCESS" "Batch validation completed successfully."
-
-    # Execution Phase
-    log_action "INFO" "Starting group creation..."
-    while IFS= read -r groupname || [[ -n "$groupname" ]]; do
-        add_single_group "$groupname"
+        _add_single_group "$groupname"
         local exit_code=$?
         case $exit_code in
             0) _add_group_status_to_array created_groups "$groupname" "success" ;;
             1) _add_group_status_to_array failed_groups "$groupname" "failed" "Failed to create group" ;;
             2) _add_group_status_to_array existing_groups "$groupname" "skipped" "Group already exists" ;;
         esac
-    done < "$filename"
-
-    _display_add_groups_bash_results "${created_groups[@]}" "${existing_groups[@]}" "${failed_groups[@]}"
-}
-
-# -------------------------------------------------------------------------------------------------
-# FUNCTION: parse_groups_from_json
-# DESCRIPTION:
-#   Parses a JSON file for a list of groups and adds each one.
-#
-# PARAMETERS:
-#   $1 - filename: The path to the JSON file.
-#
-# OUTPUTS:
-#   Logs the status of each group addition.
-# -------------------------------------------------------------------------------------------------
-parse_groups_from_json() {
-    local filename=$1
-    local created_groups=()
-    local existing_groups=()
-    local failed_groups=()
-
-    # Batch Validation Phase
-    log_action "INFO" "Starting batch validation for groups from JSON file..."
-    local validation_errors=0
-    while IFS= read -r groupname; do
-        if [[ -z "$groupname" ]]; then
-            log_action "ERROR" "Validation failed: Missing group name in JSON input."
-            ((validation_errors++))
-        elif ! validate_name "$groupname" "group"; then
-            log_action "ERROR" "Validation failed: Invalid group name format: '$groupname'"
-            ((validation_errors++))
-        fi
-    done < <(jq -r '.groups[].name' "$filename")
-
-    if [[ $validation_errors -gt 0 ]]; then
-        log_action "ERROR" "Batch validation failed with $validation_errors error(s). Aborting."
-        return 1
-    fi
-    log_action "SUCCESS" "Batch validation completed successfully."
-
-    # Execution Phase
-    log_action "INFO" "Starting group creation..."
-    while IFS= read -r groupname; do
-        add_single_group "$groupname"
-        local exit_code=$?
-        case $exit_code in
-            0) _add_group_status_to_array created_groups "$groupname" "success" ;;
-            1) _add_group_status_to_array failed_groups "$groupname" "failed" "Failed to create group" ;;
-            2) _add_group_status_to_array existing_groups "$groupname" "skipped" "Group already exists" ;;
-        esac
-    done < <(jq -r '.groups[].name' "$filename")
+    done
 
     _display_add_groups_bash_results "${created_groups[@]}" "${existing_groups[@]}" "${failed_groups[@]}"
 }
@@ -226,18 +161,21 @@ parse_groups_from_json() {
 # PUBLIC FUNCTIONS
 # =================================================================================================
 
-# =================================================================================================
-# FUNCTION: add_groups
-# DESCRIPTION:
-#   The main entry point for adding groups. It handles command-line argument parsing and
-#   delegates to the appropriate core function based on the specified mode.
+# ------------------------------------------------------------------------------
+# FUNCTION: add_groups()
 #
-# PARAMETERS:
-#   $@ - All command-line arguments passed to the function.
+# DESCRIPTION:
+#   The main entry point for adding groups. It handles command-line argument
+#   parsing and delegates to the appropriate core function based on the
+#   specified mode (single, text file, or JSON file).
+#
+# ARGUMENTS:
+#   $@: All command-line arguments passed to the function.
 #
 # OUTPUTS:
-#   Displays help text or delegates to other functions for output.
-# -------------------------------------------------------------------------------------------------
+#   Displays a help banner if no arguments are provided or if --help is passed.
+#   Delegates to other functions for detailed output.
+# ------------------------------------------------------------------------------
 add_groups() {
     _display_banner "Group Addition"
 
@@ -275,26 +213,56 @@ add_groups() {
         esac
     done
 
-    # Execute based on mode
+    # --- Batch Validation Phase ---
+    if [[ "$mode" == "text" || "$mode" == "json" ]]; then
+        if [[ ! -f "$input_file" ]]; then
+            log_action "ERROR" "File not found: $input_file"
+            return 1
+        fi
+
+        log_action "INFO" "Starting batch validation for groups from $mode file..."
+        local validation_errors=0
+        local group_names
+
+        if [[ "$mode" == "json" ]]; then
+            group_names=$(jq -r '.groups[].name' "$input_file")
+        else
+            group_names=$(cat "$input_file")
+        fi
+
+        while IFS= read -r groupname; do
+            if [[ -z "$groupname" ]]; then
+                if [[ "$mode" == "json" ]]; then
+                    log_action "ERROR" "Validation failed: Missing group name in JSON input."
+                    ((validation_errors++))
+                fi
+                continue
+            fi
+            if ! validate_name "$groupname" "group"; then
+                log_action "ERROR" "Validation failed: Invalid group name format: '$groupname'"
+                ((validation_errors++))
+            fi
+        done <<< "$group_names"
+
+        if [[ $validation_errors -gt 0 ]]; then
+            log_action "ERROR" "Batch validation failed with $validation_errors error(s). Aborting."
+            return 1
+        fi
+        log_action "SUCCESS" "Batch validation completed successfully."
+    fi
+
+    # --- Execution Phase ---
     if [[ "$mode" == "text" ]]; then
-        if [[ ! -f "$input_file" ]]; then
-            log_action "ERROR" "File not found: $input_file"
-            return 1
-        fi
-        parse_groups_from_text "$input_file"
+        cat "$input_file" | _add_groups_core
     elif [[ "$mode" == "json" ]]; then
-        if [[ ! -f "$input_file" ]]; then
-            log_action "ERROR" "File not found: $input_file"
-            return 1
-        fi
-        parse_groups_from_json "$input_file"
+        jq -r '.groups[].name' "$input_file" | _add_groups_core
     else
         # Single group(s) mode
         local created_groups=()
         local existing_groups=()
         local failed_groups=()
         for groupname in "${single_groups[@]}"; do
-            add_single_group "$groupname"
+            _add_single_group "$groupname"
             local exit_code=$?
             case $exit_code in
                 0) _add_group_status_to_array created_groups "$groupname" "success" ;;

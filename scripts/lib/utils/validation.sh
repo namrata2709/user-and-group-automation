@@ -24,28 +24,34 @@
 
 # ==============================================================================
 # SECTION: NAME AND IDENTIFIER VALIDATION
-# ==============================================================================
+# ==============================================================================\n# SECTION: NAME AND IDENTIFIER VALIDATION\n# ==============================================================================
 
 # ------------------------------------------------------------------------------
 # FUNCTION: validate_name()
 #
 # DESCRIPTION:
-#   Validates a username or group name against standard Linux naming conventions.
-#   It checks for length and allowed characters.
+#   Validates a username or group name against standard Linux/POSIX naming
+#   conventions. This function is critical for preventing the creation of
+#   malformed user or group names that could cause issues with system tools
+#   or scripts.
 #
 # ARGUMENTS:
 #   $1: name - The username or group name to validate.
-#   $2: type - The type of name being validated ("user" or "group"), used for
+#   $2: type - The type of name ("user" or "group"), used for customizing
 #       error messages.
 #
 # RETURNS:
 #   0 (true) if the name is valid.
-#   1 (false) if the name is invalid, printing an error message to stderr.
+#   1 (false) if the name is invalid, printing a detailed error message to stderr.
 #
 # RULES:
-#   - Must be between 1 and 32 characters (configurable with MAX_USERNAME_LENGTH).
-#   - Must start with a lowercase letter or an underscore.
-#   - Subsequent characters can be lowercase letters, digits, hyphens, or underscores.
+#   - Length: Must be between 1 and 32 characters. This is a common limit
+#     across many Linux distributions.
+#   - Start Character: Must begin with a lowercase letter or an underscore.
+#     This prevents names that might be misinterpreted as flags or system variables.
+#   - Allowed Characters: Subsequent characters can only be lowercase letters,
+#     digits, hyphens, or underscores. This avoids special characters that
+#     can cause parsing errors in scripts or command-line operations.
 # ------------------------------------------------------------------------------
 validate_name() {
     local name="$1"
@@ -278,4 +284,13 @@ normalize_sudo() {
             echo "no"
             ;;
     esac
+}
+
+is_valid_number() {
+    [[ "$1" =~ ^[0-9]+$ ]]
+}
+
+is_valid_range() {
+    local min max
+    parse_range "$1" min max
 }

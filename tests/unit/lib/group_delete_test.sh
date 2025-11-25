@@ -5,7 +5,7 @@
 
 # Load test helpers
 . "$(dirname "$0")"/test_helpers.sh
-. "$(dirname "$0")"/../scripts/lib/output_helpers.sh
+. "$(dirname "$0")"/../scripts/lib/utils/output_helpers.sh
 . "$(dirname "$0")"/../scripts/lib/group_delete.sh
 
 # =================================================

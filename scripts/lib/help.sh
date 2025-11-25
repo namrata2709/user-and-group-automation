@@ -12,7 +12,7 @@
 # =============================================================================
 
 # Load shared output helpers for consistent styling
-source "$(dirname "$0")/utils/output.sh"
+source "$LIB_DIR/utils/output.sh"
 
 # =============================================================================
 # FUNCTION: _display_help

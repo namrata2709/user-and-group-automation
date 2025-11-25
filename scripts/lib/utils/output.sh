@@ -9,138 +9,174 @@
 #                functions for printing banners, tables, summaries, and
 #                formatted messages with consistent styling (colors and icons).
 #
-#       OPTIONS: ---
-#  REQUIREMENTS: bash, coreutils, tput
-#          BUGS: ---\
-#         NOTES: This library helps maintain a consistent look and feel across
-#                different scripts in the project.
-#       AUTHOR: Your Name, your.email@example.com
-# ORGANIZATION: Your Company
-#      CREATED: YYYY-MM-DD
-#     REVISION: 1.4.0
+#     REVISION: 2.0.0
 #
-# ==============================================================================\n\n# ==============================================================================\n# SECTION: COLOR AND STYLE DEFINITIONS\n# ==============================================================================
-# ... existing code ...
-# ==============================================================================\n# SECTION: BANNER FUNCTIONS\n# ==============================================================================
+# ==============================================================================
+
+# ==============================================================================
+# SECTION: COLOR AND STYLE DEFINITIONS
+# ==============================================================================
+# Check if stdout is a terminal
+if [[ -t 1 ]]; then
+    # Use tput to get terminal capabilities
+    BOLD=$(tput bold)
+    UNDERLINE=$(tput smul)
+    NORMAL=$(tput sgr0)
+    BLACK=$(tput setaf 0)
+    RED=$(tput setaf 1)
+    GREEN=$(tput setaf 2)
+    YELLOW=$(tput setaf 3)
+    BLUE=$(tput setaf 4)
+    MAGENTA=$(tput setaf 5)
+    CYAN=$(tput setaf 6)
+    WHITE=$(tput setaf 7)
+else
+    # If not a terminal, disable colors and styles
+    BOLD=""
+    UNDERLINE=""
+    NORMAL=""
+    BLACK=""
+    RED=""
+    GREEN=""
+    YELLOW=""
+    BLUE=""
+    MAGENTA=""
+    CYAN=""
+    WHITE=""
+fi
+
+# ==============================================================================
+# SECTION: ICON DEFINITIONS
+# ==============================================================================
+ICON_SUCCESS="✔"
+ICON_ERROR="✖"
+ICON_WARNING="⚠"
+ICON_INFO="ℹ"
+
+# ==============================================================================
+# SECTION: CORE MESSAGING FUNCTIONS
+# ==============================================================================
 
 # ------------------------------------------------------------------------------
-# FUNCTION: _display_banner()
-#
-# DESCRIPTION:
-#   Prints a standardized banner to announce the start of a major operation.
-#   This is used to clearly demarcate different stages of the script's execution,
-#   such as adding users or provisioning from a file.
-#
-# ARGUMENTS:
-#   $1: operation_name - The name of the operation (e.g., "Adding Users").
-#   $2: file_path - The path to the input file being processed.
+# FUNCTION: info_message()
+# DESCRIPTION: Prints an informational message.
+# ARGUMENTS: $1 - The message to print.
 # ------------------------------------------------------------------------------
-_display_banner() {
-# ... existing code ...
-# ==============================================================================\n# SECTION: RESULT DISPLAY FUNCTIONS\n# ==============================================================================
-
-# ------------------------------------------------------------------------------
-# FUNCTION: _display_add_users_bash_results()
-#
-# DESCRIPTION:
-#   Parses a JSON array of user status objects and displays a human-readable
-#   summary in the terminal. It reports which users were successfully created,
-#   which already existed, and which failed, providing clear feedback for
-#   each operation.
-#
-# GLOBALS:
-#   ICON_SUCCESS, ICON_ERROR, ICON_WARNING (read)
-#
-# ARGUMENTS:
-#   $1: json_results - A JSON string containing arrays of created, existing,
-#                      and failed user objects.
-# ------------------------------------------------------------------------------
-_display_add_users_bash_results() {
-# ... existing code ...
-# ------------------------------------------------------------------------------
-# FUNCTION: _display_provision_bash_results()
-#
-# DESCRIPTION:
-#   Parses the complex JSON output from the provisioning process, which includes
-#   both user and group creation statuses. It provides a comprehensive,
-#   human-readable summary of the entire operation, detailing which groups and
-#   users were created, skipped, or failed.
-#
-# GLOBALS:
-#   ICON_SUCCESS, ICON_ERROR, ICON_WARNING (read)
-#
-# ARGUMENTS:
-#   $1: json_results - A JSON string containing the results for both users
-#                      and groups.
-# ------------------------------------------------------------------------------
-_display_provision_bash_results() {
-# ... existing code ...
-# ==============================================================================\n# SECTION: SUMMARY AND TABLE FUNCTIONS\n# ==============================================================================
-
-# ------------------------------------------------------------------------------
-# FUNCTION: print_operation_summary()
-#
-# DESCRIPTION:
-#   Parses a JSON summary object and prints a final tally of all operations.
-#   It calculates and displays the total number of items (users and/or groups)
-#   that were created, skipped (already existing), or failed. This gives the
-#   administrator a quick, at-a-glance overview of the outcome.
-#
-# ARGUMENTS:
-#   $1: json_summary - The JSON string containing the summary block with arrays
-#                      for created, existing, and failed items.
-# ------------------------------------------------------------------------------
-print_operation_summary() {
-    local json_summary="$1"
-    local total_created total_skipped total_failed
-
-    # Calculate totals from the JSON input
-    total_created=$(echo "$json_summary" | jq '[.users.created, .groups.created | select(. != null)] | flatten | length')
-    total_skipped=$(echo "$json_summary" | jq '[.users.existing, .groups.existing | select(. != null)] | flatten | length')
-    total_failed=$(echo "$json_summary" | jq '[.users.failed, .groups.failed | select(. != null)] | flatten | length')
-
-    print_section_banner "Operation Summary"
-    echo -e "  ${ICON_SUCCESS} ${BOLD}Created:${NORMAL} ${total_created}"
-    echo -e "  ${ICON_WARNING} ${BOLD}Skipped:${NORMAL} ${total_skipped} (already exist)"
-    echo -e "  ${ICON_ERROR} ${BOLD}Failed:${NORMAL}  ${total_failed}"
-    print_horizontal_line
+info_message() {
+    echo -e "${BLUE}${ICON_INFO}${NORMAL} $1"
 }
 
+# ------------------------------------------------------------------------------
+# FUNCTION: success_message()
+# DESCRIPTION: Prints a success message.
+# ARGUMENTS: $1 - The message to print.
+# ------------------------------------------------------------------------------
+success_message() {
+    echo -e "${GREEN}${ICON_SUCCESS}${NORMAL} $1"
+}
+
+# ------------------------------------------------------------------------------
+# FUNCTION: warning_message()
+# DESCRIPTION: Prints a warning message.
+# ARGUMENTS: $1 - The message to print.
+# ------------------------------------------------------------------------------
+warning_message() {
+    echo -e "${YELLOW}${ICON_WARNING}${NORMAL} $1"
+}
+
+# ------------------------------------------------------------------------------
+# FUNCTION: error_message()
+# DESCRIPTION: Prints an error message to stderr.
+# ARGUMENTS: $1 - The message to print.
+# ------------------------------------------------------------------------------
+error_message() {
+    echo -e "${RED}${ICON_ERROR}${NORMAL} $1" >&2
+}
+
+# ==============================================================================
+# SECTION: BANNER FUNCTIONS
+# ==============================================================================
 
 # ------------------------------------------------------------------------------
 # FUNCTION: print_horizontal_line()
-#
-# DESCRIPTION:
-#   Prints a horizontal line across the terminal width.
+# DESCRIPTION: Prints a horizontal line across the terminal width.
 # ------------------------------------------------------------------------------
 print_horizontal_line() {
     printf '%*s\n' "${COLUMNS:-$(tput cols)}" '' | tr ' ' '-'
 }
 
+# ------------------------------------------------------------------------------
+# FUNCTION: display_banner()
+# DESCRIPTION: Prints a standardized banner for a major operation.
+# ARGUMENTS: $1 - The title of the banner.
+# ------------------------------------------------------------------------------
+display_banner() {
+    local title="$1"
+    print_horizontal_line
+    echo -e "${BOLD}${CYAN}${title}${NORMAL}"
+    print_horizontal_line
+}
+
+# ------------------------------------------------------------------------------
+# FUNCTION: print_section_banner()
+# DESCRIPTION: Prints a smaller banner for a section.
+# ARGUMENTS: $1 - The title of the section.
+# ------------------------------------------------------------------------------
+print_section_banner() {
+    echo -e "\n${BOLD}${UNDERLINE}${WHITE}$1${NORMAL}"
+}
+
+
+# ==============================================================================
+# SECTION: TABLE FUNCTIONS
+# ==============================================================================
 
 # ------------------------------------------------------------------------------
 # FUNCTION: print_table_header()
-#
-# DESCRIPTION:
-#   Prints a formatted header for a table.
-#
-# ARGUMENTS:
-#   $@: columns - A list of column names.
+# DESCRIPTION: Prints a formatted header for a table.
+# ARGUMENTS: $@ - A list of column names.
 # ------------------------------------------------------------------------------
 print_table_header() {
     printf "${BOLD}%-20s %-15s %-25s %-10s${NORMAL}\n" "$@"
 }
 
-
 # ------------------------------------------------------------------------------
 # FUNCTION: print_table_row()
-#
-# DESCRIPTION:
-#   Prints a formatted row for a table.
-#
-# ARGUMENTS:
-#   $@: values - A list of values for the row.
+# DESCRIPTION: Prints a formatted row for a table.
+# ARGUMENTS: $@ - A list of values for the row.
 # ------------------------------------------------------------------------------
 print_table_row() {
     printf "%-20s %-15s %-25s %-10s\n" "$@"
+}
+
+# ==============================================================================
+# SECTION: SUMMARY FUNCTIONS
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# FUNCTION: print_operation_summary()
+# DESCRIPTION: Prints a final summary of an operation.
+# ARGUMENTS:
+#   $1: total_count - Total items processed.
+#   $2: action_verb - The verb for the success count (e.g., "Created", "Updated").
+#   $3: success_count - Number of successful operations.
+#   $4: skipped_count - Number of skipped items.
+#   $5: failed_count - Number of failed operations.
+#   $6: duration - The total time taken in seconds.
+# ------------------------------------------------------------------------------
+print_operation_summary() {
+    local total_count="$1"
+    local action_verb="$2"
+    local success_count="$3"
+    local skipped_count="$4"
+    local failed_count="$5"
+    local duration="$6"
+
+    print_section_banner "Operation Summary"
+    echo -e "  Total items processed: ${total_count}"
+    echo -e "  ${GREEN}${action_verb}:${NORMAL} ${success_count}"
+    echo -e "  ${YELLOW}Skipped:${NORMAL} ${skipped_count}"
+    echo -e "  ${RED}Failed:${NORMAL}  ${failed_count}"
+    echo -e "  Duration: ${duration}s"
+    print_horizontal_line
 }

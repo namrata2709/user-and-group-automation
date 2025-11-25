@@ -735,7 +735,7 @@ execute_operation() {
 
     case "$operation" in
         "add")
-            add_user "$operation" "$@"
+            add_users "$operation" "$@"
             ;;
         "add-group")
             add_group_main "$operation" "$@"

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # ==============================================================================
 #
-#          FILE: output_helpers.sh
+#          FILE: output.sh
 #
-#         USAGE: source output_helpers.sh
+#         USAGE: source output.sh
 #
 #   DESCRIPTION: A library for standardized terminal output, providing
 #                functions for printing banners, tables, summaries, and

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# ================================================
+# ===============================================
 # Configuration Validation Module
 # Version: 1.0.1
-# ================================================
+# ===============================================
 
 validate_config() {
     local errors=0
@@ -91,7 +91,8 @@ validate_config() {
     
     # Validate LOG_FILE
     if [ -n "$LOG_FILE" ]; then
-        local log_dir=$(dirname "$LOG_FILE")
+        local log_dir
+        log_dir=$(dirname "$LOG_FILE")
         if [ ! -d "$log_dir" ]; then
             echo "${ICON_WARNING} Config Warning: Log directory doesn't exist: $log_dir (will be created)"
             ((warnings++))

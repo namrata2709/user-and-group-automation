@@ -718,16 +718,17 @@ main() {
         return 1
     fi
 
-    local command="$1"
+    # Strip leading dashes from the command for flexibility (e.g., --add becomes add)
+    local command="${1#--}"
     shift
 
     # Centralized command execution
     execute_operation "$command" "$@"
 }
 
-# ==============================================================================
+# ==============================================================================\
 # COMMAND EXECUTION
-# ==============================================================================
+# ==============================================================================\
 execute_operation() {
     local operation="$1"
     shift

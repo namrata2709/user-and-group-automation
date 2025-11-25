@@ -398,21 +398,34 @@ aggregate_users() {
         output+="|count=$count"
 
         for func in "${agg_funcs[@]}"; do
-            if [[ $func =~ ^(sum|avg|min|max)\(([^)]*)\)$ ]]; then
-                local op="${BASH_REMATCH[1]}"
-                local field="${BASH_REMATCH[2]}"
-                
-                local values=$(echo -e "$group_items" | grep -oP "$field=\\K[^|]+")
-                
-                local result
-                case "$op" in
-                    sum) result=$(echo "$values" | paste -sd+ | bc) ;;
-                    avg) result=$(echo "$values" | { sum=$(paste -sd+ | bc); count=$(wc -l); echo "scale=2; $sum / $count" | bc; }) ;;
-                    min) result=$(echo "$values" | sort -n | head -1) ;;
-                    max) result=$(echo "$values" | sort -n | tail -1) ;;
-                esac
-                output+="|${op}_${field}=${result:-0}"
+            # More robustly parse function and field, e.g., "sum(uid)"
+            local op field
+            if [[ "$func" =~ ([a-z]+) && "$func" =~ \((.*)\) ]]; then
+                op="${func%%(*}"
+                field="${func#*(}"
+                field="${field%)*}"
+            else
+                continue
             fi
+
+            local values=$(echo -e "$group_items" | grep -oP "$field=\\K[^|]+")
+            
+            local result
+            case "$op" in
+                sum) result=$(echo "$values" | paste -sd+ | bc) ;;
+                avg)
+                    local sum=$(echo "$values" | paste -sd+ | bc)
+                    local num_values=$(echo "$values" | wc -l)
+                    if [ "$num_values" -gt 0 ]; then
+                        result=$(echo "scale=2; $sum / $num_values" | bc)
+                    else
+                        result=0
+                    fi
+                    ;;
+                min) result=$(echo "$values" | sort -n | head -1) ;;
+                max) result=$(echo "$values" | sort -n | tail -1) ;;
+            esac
+            output+="|${op}_${field}=${result:-0}"
         done
         echo "$output"
     done

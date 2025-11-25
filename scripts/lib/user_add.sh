@@ -26,9 +26,9 @@
 # ==============================================================================
 # SECTION: CONSTANTS
 # ==============================================================================
-readonly SUCCESS=0
-readonly HARD_FAILURE=1
-readonly SOFT_FAILURE=2
+SUCCESS=0
+HARD_FAILURE=1
+SOFT_FAILURE=2
 
 # ==============================================================================
 # SECTION: PRIVATE HELPER FUNCTIONS

@@ -22,6 +22,8 @@ LIB_DIR="$SCRIPT_DIR/lib"
 CONFIG_DIR="$INSTALL_DIR/config"
 EXAMPLES_DIR="$SCRIPT_DIR/examples"
 LOG_FILE="/var/log/user_mgmt_install.log"
+$CONFIG_FILE="$CONFIG_DIR/user_mgmt.conf"
+INSTALL_FLAG_FILE="$INSTALL_DIR/.install_complete"
 
 # Print functions
 print_header() {
@@ -360,6 +362,12 @@ show_next_steps() {
 
 # Main installation flow
 main() {
+    # Check if installation has already been completed.
+    if [ -f "$INSTALL_FLAG_FILE" ]; then
+        # Silently do nothing if the installation flag is found.
+        return 0
+    fi
+
     print_header "EC2 User Management System - Installer v1.0.1"
     echo ""
     
@@ -383,6 +391,10 @@ main() {
     
     log "Installation completed"
     
+    # Create a flag file to indicate that the installation is complete.
+    sudo touch "$INSTALL_FLAG_FILE"
+    log "Created installation flag at $INSTALL_FLAG_FILE"
+
     print_success "Installation script finished!"
 }
 

@@ -189,79 +189,124 @@ _parse_users_from_text() {
 #   SOFT_FAILURE (2): On soft failure (e.g., the user already exists).
 # ------------------------------------------------------------------------------
 _add_single_user() {
-    local username=$1
-    shift
-
-    # Initialize variables to default values
+    # --- Argument Parsing ---
+    # Initialize all optional values to empty, as you instructed.
+    local username=""
     local primary_group=""
     local secondary_groups=""
     local shell=""
-    local comment=""
-    local expiry_date=""
-    local password_policy=""
-    local home_dir=""
-    local no_create_home=false
-    local system_user=false
-    local uid=""
+    local sudo_access="false"
+    local password=""
 
-    # Parse optional arguments
-    while [ $# -gt 0 ]; do
+    # Loop through all arguments to parse named flags.
+    # This is the correct way to handle optional arguments.
+    while [[ $# -gt 0 ]]; do
         case "$1" in
-            --group) primary_group=$2; shift 2 ;;
-            --groups) secondary_groups=$2; shift 2 ;;
-            --shell) shell=$2; shift 2 ;;
-            --comment) comment=$2; shift 2 ;;
-            --expiry) expiry_date=$2; shift 2 ;;
-            --password-policy) password_policy=$2; shift 2 ;;
-            --home) home_dir=$2; shift 2 ;;
-            --no-create-home) no_create_home=true; shift ;;
-            --system) system_user=true; shift ;;
-            --uid) uid=$2; shift 2 ;;
-            *) error_message "Unknown option for add: $1"; return $SOFT_FAILURE ;;
+            --group)
+                primary_group="$2"
+                shift 2
+                ;;
+            --secondary-groups)
+                secondary_groups="$2"
+                shift 2
+                ;;
+            --shell)
+                shell="$2"
+                shift 2
+                ;;
+            --sudo)
+                sudo_access="true"
+                shift 1
+                ;;
+            --password)
+                password="$2"
+                shift 2
+                ;;
+            -*)
+                log_error "Unknown option for single user creation: $1"
+                _display_help "add"
+                return "$SOFT_FAILURE"
+                ;;
+            *)
+                # The first non-flag argument is the username.
+                if [ -z "$username" ]; then
+                    username="$1"
+                else
+                    log_error "Too many arguments. Only one username can be specified directly."
+                    _display_help "add"
+                    return "$SOFT_FAILURE"
+                fi
+                shift 1
+                ;;
         esac
     done
 
-    # Validate username
-    if ! validate_name "$username" "user"; then
-        echo "Invalid username format"
-        log_action "ERROR" "User creation failed: '$username' is not a valid username."
-        return $HARD_FAILURE
+    # --- Validation ---
+    if [ -z "$username" ]; then
+        log_error "Username not provided for single user creation."
+        _display_help "add"
+        return "$SOFT_FAILURE"
     fi
 
-    # Check if user already exists
-    if id "$username" &>/dev/null; then
-        log_action "INFO" "User '$username' already exists. Skipping."
-        return $SOFT_FAILURE
+    # --- Apply Defaults ---
+    # As you correctly pointed out, we apply defaults only if the flags were not used.
+    primary_group=${primary_group:-$DEFAULT_PRIMARY_GROUP}
+    shell=${shell:-$DEFAULT_SHELL}
+
+    # --- Further Validation ---
+    if ! is_valid_username "$username"; then
+        log_error "Invalid username format: '$username'."
+        return "$SOFT_FAILURE"
     fi
 
-    # Build useradd command arguments
-    local useradd_args=(-m -s "$shell")
-    if [[ -n "$primary_group" ]]; then
-        useradd_args+=(-g "$primary_group")
-    else
-        useradd_args+=(-g "$username")
+    if [ -z "$primary_group" ]; then
+        log_error "Primary group cannot be empty. Please specify with --group or set DEFAULT_PRIMARY_GROUP in the config."
+        return "$HARD_FAILURE"
     fi
-    if [[ -n "$secondary_groups" ]]; then
-        useradd_args+=(-G "$secondary_groups")
-    fi
-    useradd_args+=("$username")
 
-    # Execute or dry-run
-    if [[ "$DRY_RUN" == "true" ]]; then
-        log_action "DRY-RUN" "Would execute: useradd ${useradd_args[*]}"
-        return $SUCCESS
-    else
-        log_action "INFO" "Creating user '$username' with command: useradd ${useradd_args[*]}"
-        if useradd "${useradd_args[@]}"; then
-            log_action "SUCCESS" "User '$username' created successfully."
-            return $SUCCESS
-        else
-            local error_msg="Failed to create user '$username'."
-            log_action "ERROR" "$error_msg"
-            echo "$error_msg"
-            return $HARD_FAILURE
+    if ! group_exists "$primary_group"; then
+        log_warning "Primary group '$primary_group' does not exist. Attempting to create it."
+        if ! sudo groupadd "$primary_group"; then
+            log_error "Failed to create primary group '$primary_group'."
+            return "$HARD_FAILURE"
         fi
     fi
+
+    if [ -n "$shell" ] && ! is_valid_shell "$shell"; then
+        log_error "Invalid shell: '$shell'. Not listed in /etc/shells."
+        return "$SOFT_FAILURE"
+    fi
+
+    # --- Build useradd command ---
+    local useradd_opts=()
+    useradd_opts+=("-g" "$primary_group")
+    [ -n "$shell" ] && useradd_opts+=("-s" "$shell")
+    [ -n "$secondary_groups" ] && useradd_opts+=("-G" "$secondary_groups")
+
+    # --- Execute useradd ---
+    log_info "Attempting to create user '$username'..."
+    if ! sudo useradd "${useradd_opts[@]}" "$username"; then
+        log_error "Failed to create user '$username' using useradd command."
+        return "$HARD_FAILURE"
+    fi
+
+    log_success "User '$username' created successfully."
+
+    # --- Password and Sudo ---
+    if [ -n "$password" ]; then
+        echo "$username:$password" | sudo chpasswd
+        log_info "Password set for user '$username'."
+    fi
+
+    if [ "$sudo_access" = "true" ]; then
+        if ! usermod -aG sudo "$username"; then
+             log_warning "Could not add user '$username' to sudo group. The group may not exist."
+        else
+             log_info "User '$username' added to sudo group."
+        fi
+    fi
+
+    return "$SUCCESS"
 }
 
 # ------------------------------------------------------------------------------
@@ -527,13 +572,8 @@ add_users() {
                 ;;
             *)
                 # Single user mode
-                local username="$1"
-                local primary_group="$2"
-                local secondary_groups="$3"
-                local shell_access="$4"
-                local sudo="$5"
-                shift $#
-                ;;
+                _add_single_user "$@"
+                return $?
         esac
     done
 

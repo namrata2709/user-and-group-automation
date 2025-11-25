@@ -9,13 +9,19 @@
 #
 # =============================================================================
 
-# --- Test Setup ---
-source "$(dirname "$0")/../../../test_helpers.sh"
-source "$(dirname "$0")/../../../../scripts/lib/utils/validation.sh"
-source "$(dirname "$0")/../../../../scripts/lib/utils/logging.sh"
-source "$(dirname "$0")/../../../../scripts/lib/utils/output.sh"
-source "$(dirname "$0")/../../../../scripts/lib/group_add.sh"
-source "$(dirname "$0")/../../../../scripts/lib/user_add.sh"
+
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
+LIB_DIR="$SCRIPT_DIR/../../../scripts/lib"
+UTILS_DIR="$LIB_DIR/utils"
+TEST_HELPER_PATH="$SCRIPT_DIR/../../test_helper.sh"
+
+# Source the necessary files using absolute paths
+source "$TEST_HELPER_PATH"
+source "$UTILS_DIR/validation.sh"
+source "$UTILS_DIR/logging.sh"
+source "$UTILS_DIR/output.sh"
+source "$LIB_DIR/group_add.sh"
+source "$LIB_DIR/user_add.sh"
 
 # --- Mocks & Stubs ---
 _display_banner() { :; }

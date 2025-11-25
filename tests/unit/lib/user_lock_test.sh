@@ -5,111 +5,173 @@
 # =================================================================
 
 # --- Test Setup ---
-# Create test users
-sudo useradd test_lock_user1
-sudo useradd test_lock_user2
-sudo useradd test_lock_user3
+set -e
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
+LIB_DIR="$SCRIPT_DIR/../../../scripts/lib"
+UTILS_DIR="$LIB_DIR/utils"
+TEST_HELPER_PATH="$SCRIPT_DIR/../../test_helper.sh"
 
-# Create test files
-cat > lock_users.txt << EOF
-test_lock_user1:Security reason
-test_lock_user2
-EOF
+source "$TEST_HELPER_PATH"
+source "$UTILS_DIR/output.sh"
+source "$LIB_DIR/user_lock.sh"
 
-cat > lock_users.json << EOF
+# --- Mocks & Stubs ---
+MOCK_LOG=""
+_display_banner() { :; }
+log_action() { echo "LOG: $*" >> "$MOCK_LOG"; }
+
+# Mock for usermod command
+usermod() {
+    echo "usermod_called: $*" >> "$MOCK_LOG"
+    return 0
+}
+
+# Mock for passwd command
+passwd() {
+    echo "passwd_called: $*" >> "$MOCK_LOG"
+    return 0
+}
+
+# Mock for getent command
+getent() {
+    case "$2" in
+        existing_user|locked_user|unlocked_user|user1|user2)
+            echo "$2:x:1001:"
+            return 0
+        ;;
+        *)
+            return 1
+        ;;
+    esac
+}
+
+# Mock for passwd -S command
+_get_user_lock_status() {
+    case "$1" in
+        locked_user)
+            echo "$1 LK" # Locked
+        ;;
+        unlocked_user|existing_user|user1|user2)
+            echo "$1 PS" # Has a password
+        ;;
+        *)
+            echo "NP" # No password
+        ;;
+    esac
+}
+
+
+# --- Test Suite Setup & Teardown ---
+setup() {
+    MOCK_LOG=$(mktemp)
+}
+
+teardown() {
+    rm -f "$MOCK_LOG"
+}
+
+# =================================================
+# Test Cases
+# =================================================
+
+test_lock_single_user_success() {
+    local output
+    output=$(lock_users "unlocked_user" --reason "Security audit")
+    
+    assert_string_contains "$output" "Summary"
+    assert_string_contains "$output" "Locked: 1"
+    assert_file_contains "$MOCK_LOG" "usermod_called: -L unlocked_user"
+    assert_file_contains "$MOCK_LOG" "LOG: Locked user 'unlocked_user'. Reason: Security audit"
+}
+
+test_lock_already_locked_user() {
+    local output
+    output=$(lock_users "locked_user")
+
+    assert_string_contains "$output" "Summary"
+    assert_string_contains "$output" "Skipped: 1"
+    assert_string_contains "$output" "Reason: User is already locked"
+    assert_file_not_contains "$MOCK_LOG" "usermod_called"
+}
+
+test_lock_non_existent_user() {
+    local output
+    output=$(lock_users "nonexistentuser")
+
+    assert_string_contains "$output" "Summary"
+    assert_string_contains "$output" "Failed: 1"
+    assert_string_contains "$output" "Reason: User does not exist"
+}
+
+test_unlock_single_user_success() {
+    local output
+    output=$(unlock_users "locked_user")
+    
+    assert_string_contains "$output" "Summary"
+    assert_string_contains "$output" "Unlocked: 1"
+    assert_file_contains "$MOCK_LOG" "usermod_called: -U locked_user"
+    assert_file_contains "$MOCK_LOG" "LOG: Unlocked user 'locked_user'"
+}
+
+test_unlock_already_unlocked_user() {
+    local output
+    output=$(unlock_users "unlocked_user")
+
+    assert_string_contains "$output" "Summary"
+    assert_string_contains "$output" "Skipped: 1"
+    assert_string_contains "$output" "Reason: User is already unlocked"
+    assert_file_not_contains "$MOCK_LOG" "usermod_called"
+}
+
+test_lock_users_from_text_file() {
+    local text_file
+    text_file=$(mktemp)
+    printf "user1:Reason one\nuser2\n" > "$text_file"
+
+    local output
+    output=$(lock_users --file "$text_file")
+
+    assert_string_contains "$output" "Summary"
+    assert_string_contains "$output" "Locked: 2"
+    assert_file_contains "$MOCK_LOG" "LOG: Locked user 'user1'. Reason: Reason one"
+    assert_file_contains "$MOCK_LOG" "LOG: Locked user 'user2'. Reason: No reason provided"
+
+    rm "$text_file"
+}
+
+test_unlock_users_from_json_file() {
+    local json_file
+    json_file=$(mktemp)
+    cat > "$json_file" <<EOL
 {
   "users": [
-    { "username": "test_lock_user1", "reason": "JSON lock reason" },
-    { "username": "test_lock_user2" }
+    { "username": "locked_user" },
+    { "username": "unlocked_user" }
   ]
 }
-EOF
+EOL
+    # Mock _get_user_lock_status for this specific test case
+    _get_user_lock_status() {
+        case "$1" in
+            locked_user) echo "$1 LK" ;;
+            unlocked_user) echo "$1 PS" ;;
+        esac
+    }
 
-cat > unlock_users.txt << EOF
-test_lock_user1
-test_lock_user2
-EOF
+    local output
+    output=$(unlock_users --file "$json_file" --format "json")
 
-cat > unlock_users.json << EOF
-{
-  "users": [
-    { "username": "test_lock_user1" },
-    { "username": "test_lock_user2" }
-  ]
+    assert_string_contains "$output" "Summary"
+    assert_string_contains "$output" "Unlocked: 1"
+    assert_string_contains "$output" "Skipped: 1"
+    assert_file_contains "$MOCK_LOG" "LOG: Unlocked user 'locked_user'"
+    assert_file_not_contains "$MOCK_LOG" "LOG: Unlocked user 'unlocked_user'"
+
+    rm "$json_file"
 }
-EOF
-
-cat > invalid.json << EOF
-{
-  "invalid": []
-}
-EOF
 
 
-# --- Test Cases ---
-
-echo "--- Running User Lock/Unlock Tests ---"
-
-# 1. Single User Lock
-echo "1. Testing single user lock..."
-sudo ../scripts/user.sh --lock --name test_lock_user1 --reason "Initial lock"
-passwd -S test_lock_user1 | grep " L "
-
-# 2. Attempt to lock already locked user
-echo "2. Testing locking an already locked user..."
-sudo ../scripts/user.sh --lock --name test_lock_user1
-
-# 3. Single User Unlock
-echo "3. Testing single user unlock..."
-sudo ../scripts/user.sh --unlock --name test_lock_user1
-passwd -S test_lock_user1 | grep " P "
-
-# 4. Attempt to unlock already unlocked user
-echo "4. Testing unlocking an already unlocked user..."
-sudo ../scripts/user.sh --unlock --name test_lock_user1
-
-# 5. Lock non-existent user
-echo "5. Testing locking a non-existent user..."
-sudo ../scripts/user.sh --lock --name non_existent_user
-
-# 6. Lock from text file
-echo "6. Testing lock from text file..."
-sudo ../scripts/user.sh --lock --names lock_users.txt
-passwd -S test_lock_user1 | grep " L "
-passwd -S test_lock_user2 | grep " L "
-
-# 7. Unlock from text file
-echo "7. Testing unlock from text file..."
-sudo ../scripts/user.sh --unlock --names unlock_users.txt
-passwd -S test_lock_user1 | grep " P "
-passwd -S test_lock_user2 | grep " P "
-
-# 8. Lock from JSON file
-echo "8. Testing lock from JSON file..."
-sudo ../scripts/user.sh --lock --input lock_users.json --format json
-passwd -S test_lock_user1 | grep " L "
-passwd -S test_lock_user2 | grep " L "
-
-# 9. Unlock from JSON file
-echo "9. Testing unlock from JSON file..."
-sudo ../scripts/user.sh --unlock --input unlock_users.json --format json
-passwd -S test_lock_user1 | grep " P "
-passwd -S test_lock_user2 | grep " P "
-
-# 10. Test with non-existent file
-echo "10. Testing with a non-existent file..."
-sudo ../scripts/user.sh --lock --names no_such_file.txt
-
-# 11. Test with invalid JSON
-echo "11. Testing with invalid JSON..."
-sudo ../scripts/user.sh --lock --input invalid.json --format json
-
-
-# --- Test Teardown ---
-echo "--- Cleaning up ---"
-sudo userdel test_lock_user1
-sudo userdel test_lock_user2
-sudo userdel test_lock_user3
-rm lock_users.txt lock_users.json unlock_users.txt unlock_users.json invalid.json
-
-echo "--- Tests complete ---"
+# =================================================
+# Run Tests
+# =================================================
+run_test_suite

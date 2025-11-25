@@ -3,102 +3,109 @@
 # Test Suite for Group Delete Functionality
 # =================================================
 
-# Load test helpers
-. "$(dirname "$0")"/test_helpers.sh
-. "$(dirname "$0")"/../scripts/lib/utils/output_helpers.sh
-. "$(dirname "$0")"/../scripts/lib/group_delete.sh
+# --- Test Setup ---
+set -e
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
+LIB_DIR="$SCRIPT_DIR/../../../scripts/lib"
+UTILS_DIR="$LIB_DIR/utils"
+TEST_HELPER_PATH="$SCRIPT_DIR/../../test_helper.sh"
+
+source "$TEST_HELPER_PATH"
+source "$UTILS_DIR/output.sh"
+source "$LIB_DIR/group_delete.sh"
+
+# --- Mocks & Stubs ---
+MOCK_LOG=""
+_display_banner() { :; }
+log_action() { echo "LOG: $*" >> "$MOCK_LOG"; }
+
+# Mock for groupdel command
+groupdel() {
+    echo "groupdel_called: $*" >> "$MOCK_LOG"
+    return 0
+}
+
+# Mock for getent command
+getent() {
+    if [[ "$1" == "group" && ("$2" == "existing_group" || "$2" == "group1" || "$2" == "group2" || "$2" == "devs" || "$2" == "admins") ]]; then
+        echo "$2:x:1001:"
+        return 0
+    fi
+    return 1
+}
+
+# --- Test Suite Setup & Teardown ---
+setup() {
+    MOCK_LOG=$(mktemp)
+}
+
+teardown() {
+    rm -f "$MOCK_LOG"
+}
 
 # =================================================
 # Test Cases
 # =================================================
 
 test_delete_single_group_success() {
-    # Mocks
-    mock_command "getent" "echo 'testgroup:x:1001:'"
-    mock_command "groupdel" "echo 'Mocked groupdel success'"
-
-    # Run the function
-    delete_group_auto "testgroup"
-
-    # Assertions
-    assert_contain "$OUTPUT" "Group deleted" "Should show deletion message"
-
-    # Cleanup
-    unmock_command "getent"
-    unmock_command "groupdel"
+    local output
+    output=$(delete_groups "existing_group")
+    
+    assert_string_contains "$output" "Summary"
+    assert_string_contains "$output" "Deleted: 1"
+    assert_file_contains "$MOCK_LOG" "groupdel_called: existing_group"
 }
 
 test_delete_single_group_does_not_exist() {
-    # Mock getent to simulate group not existing
-    mock_command "getent" "return 1"
+    local output
+    output=$(delete_groups "nonexistentgroup")
 
-    # Run the function
-    delete_group "nonexistentgroup"
-
-    # Assertions
-    assert_contain "$OUTPUT" "Group 'nonexistentgroup' does not exist" "Should show group not found error"
-
-    # Cleanup
-    unmock_command "getent"
+    assert_string_contains "$output" "Summary"
+    assert_string_contains "$output" "Skipped: 1"
+    assert_string_contains "$output" "Reason: Group does not exist"
+    assert_file_not_contains "$MOCK_LOG" "groupdel_called"
 }
 
 test_delete_groups_from_text_file() {
-    # Create a dummy text file
-    cat > groups_to_delete.txt <<EOL
-group1
-group2
-EOL
+    local text_file
+    text_file=$(mktemp)
+    printf "group1\ngroup2\n" > "$text_file"
 
-    # Mocks
-    mock_command "getent" "echo 'mock getent success'"
-    mock_command "groupdel" "echo 'mock groupdel success'"
+    local output
+    output=$(delete_groups --file "$text_file")
 
-    # Run the function
-    delete_groups "groups_to_delete.txt" "text"
+    assert_string_contains "$output" "Summary"
+    assert_string_contains "$output" "Deleted: 2"
+    assert_file_contains "$MOCK_LOG" "groupdel_called: group1"
+    assert_file_contains "$MOCK_LOG" "groupdel_called: group2"
 
-    # Assertions
-    assert_contain "$OUTPUT" "Deleting Groups from: groups_to_delete.txt" "Should show correct banner"
-    assert_contain "$OUTPUT" "Operation Summary" "Should show summary"
-    assert_contain "$OUTPUT" "Deleted:         2" "Should report 2 deleted"
-
-    # Cleanup
-    unmock_command "getent"
-    unmock_command "groupdel"
-    rm groups_to_delete.txt
+    rm "$text_file"
 }
 
 test_delete_groups_from_json_file() {
-    # Create a dummy JSON file
-    cat > groups_to_delete.json <<EOL
+    local json_file
+    json_file=$(mktemp)
+    cat > "$json_file" <<EOL
 {
   "groups": [
-    { "name": "devs", "action": "delete" },
-    { "name": "admins", "action": "delete" },
-    { "name": "testers", "action": "keep" }
+    { "name": "devs" },
+    { "name": "admins" },
+    { "name": "testers" }
   ]
 }
 EOL
 
-    # Mocks
-    mock_command "jq" "jq" # Use real jq
-    mock_command "getent" "echo 'mock getent success'"
-    mock_command "groupdel" "echo 'mock groupdel success'"
+    local output
+    output=$(delete_groups --file "$json_file" --format "json")
 
-    # Run the function
-    delete_groups "groups_to_delete.json" "json"
+    assert_string_contains "$output" "Summary"
+    assert_string_contains "$output" "Deleted: 2"
+    assert_string_contains "$output" "Skipped: 1"
+    assert_file_contains "$MOCK_LOG" "groupdel_called: devs"
+    assert_file_contains "$MOCK_LOG" "groupdel_called: admins"
+    assert_file_not_contains "$MOCK_LOG" "groupdel_called: testers"
 
-    # Assertions
-    assert_contain "$OUTPUT" "Deleting Groups from: groups_to_delete.json" "Should show correct banner"
-    assert_contain "$OUTPUT" "Skipping group 'testers'" "Should skip testers group"
-    assert_contain "$OUTPUT" "Operation Summary" "Should show summary"
-    assert_contain "$OUTPUT" "Deleted:         2" "Should report 2 deleted"
-    assert_contain "$OUTPUT" "Skipped:         1" "Should report 1 skipped"
-
-    # Cleanup
-    unmock_command "jq"
-    unmock_command "getent"
-    unmock_command "groupdel"
-    rm groups_to_delete.json
+    rm "$json_file"
 }
 
 # =================================================

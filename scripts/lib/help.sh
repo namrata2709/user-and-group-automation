@@ -55,43 +55,8 @@ _display_help() {
 
     case "$command" in
         "add")
-            display_banner "Help: Add User(s)"
-            echo -e "${BOLD}DESCRIPTION:${NORMAL}"
-            echo -e "  Adds a single user or multiple users in batch from a file."
-            echo
-            echo -e "${BOLD}USAGE:${NORMAL}"
-            echo -e "  user add [username] [primary_group] [secondary_groups] [shell] [sudo]"
-            echo -e "  user add --file <path/to/users.txt>"
-            echo -e "  user add --json <path/to/users.json>"
-            echo
-            echo -e "${BOLD}MODES:${NORMAL}"
-            echo -e "  ${UNDERLINE}Single User Mode:${NORMAL}"
-            echo -e "    Adds one user with specified attributes."
-            echo -e "    - ${YELLOW}username${NORMAL}: (Required) The name of the user."
-            echo -e "    - ${YELLOW}primary_group${NORMAL}: (Optional) The user's primary group."
-            echo -e "    - ${YELLOW}secondary_groups${NORMAL}: (Optional) Comma-separated list of groups."
-            echo -e "    - ${YELLOW}shell${NORMAL}: (Optional) The user's login shell. Defaults to /bin/bash."
-            echo -e "    - ${YELLOW}sudo${NORMAL}: (Optional) Set to 'yes' to grant sudo privileges."
-            echo
-            echo -e "  ${UNDERLINE}Batch Mode (--file):${NORMAL}"
-            echo -e "    Adds users from a text file (one user per line)."
-            echo -e "    Format: ${CYAN}username,primary_group,secondary_groups,shell,sudo${NORMAL}"
-            echo
-            echo -e "  ${UNDERLINE}Batch Mode (--json):${NORMAL}"
-            echo -e "    Adds users from a JSON file."
-            echo -e "    See examples/users.json for the required format."
-            echo
-            echo -e "${BOLD}EXAMPLES:${NORMAL}"
-            echo -e "  ${GREEN}# Add a single user 'testuser' with default settings${NORMAL}"
-            echo -e "  user add testuser"
-            echo
-            echo -e "  ${GREEN}# Add user 'jane' to group 'developers' with a zsh shell and sudo rights${NORMAL}"
-            echo -e "  user add jane developers dev,www /bin/zsh yes"
-            echo
-            echo -e "  ${GREEN}# Add users from a text file${NORMAL}"
-            echo -e "  user add --file ./user_list.txt"
+            _display_add_help
             ;;
-
         "add-group")
             display_banner "Help: Add Group(s)"
             echo -e "${BOLD}DESCRIPTION:${NORMAL}"
@@ -146,4 +111,43 @@ _display_help() {
             ;;
     esac
     return 0
+}
+
+_display_add_help() {
+    _display_banner "Help: Add User(s)"
+    echo -e "DESCRIPTION:"
+    echo -e "  Adds a single user or multiple users in batch from a file."
+    echo -e ""
+    echo -e "${BOLD}USAGE:${NORMAL}"
+    echo -e "  user.sh add --name <username> [--group <group>] [--shell <shell>] [--sudo]"
+    echo -e "  user.sh add --file <path/to/users.txt> [--format <tsv|csv>]"
+    echo -e "  user.sh add --json <path/to/users.json>"
+    echo -e ""
+    echo -e "${BOLD}MODES:${NORMAL}"
+    echo -e "  ${CYAN}Single User Mode:${NORMAL}"
+    echo -e "    Adds one user with specified attributes using flags."
+    echo -e "    - ${YELLOW}--name <username>${NORMAL}: (Required) The name of the user."
+    echo -e "    - ${YELLOW}--group <group>${NORMAL}: (Optional) The user's primary group. Defaults to config value."
+    echo -e "    - ${YELLOW}--secondary-groups <groups>${NORMAL}: (Optional) Comma-separated list of additional groups."
+    echo -e "    - ${YELLOW}--shell <shell>${NORMAL}: (Optional) The user's login shell. Defaults to config value."
+    echo -e "    - ${YELLOW}--sudo${NORMAL}: (Optional) Flag to grant sudo privileges."
+    echo -e "    - ${YELLOW}--password <password>${NORMAL}: (Optional) Set the user's password. Use with caution."
+    echo -e ""
+    echo -e "  ${CYAN}Batch Mode (--file):${NORMAL}"
+    echo -e "    Adds users from a text file (one user per line)."
+    echo -e "    Default format: username,primary_group,secondary_groups,shell,sudo"
+    echo -e ""
+    echo -e "  ${CYAN}Batch Mode (--json):${NORMAL}"
+    echo -e "    Adds users from a JSON file."
+    echo -e "    See examples/users.json for the required format."
+    echo -e ""
+    echo -e "${BOLD}EXAMPLES:${NORMAL}"
+    echo -e "  # Add a single user 'alice' with the default primary group"
+    echo -e "  user.sh add --name alice"
+    echo -e ""
+    echo -e "  # Add user 'bob' to group 'developers' with a zsh shell and sudo rights"
+    echo -e "  user.sh add --name bob --group developers --shell /bin/zsh --sudo"
+    echo -e ""
+    echo -e "  # Add users from a text file"
+    echo -e "  user.sh add --file ./user_list.txt"
 }

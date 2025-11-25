@@ -190,7 +190,7 @@ _parse_users_from_text() {
 # ------------------------------------------------------------------------------
 _add_single_user() {
     # --- Argument Parsing ---
-    # Initialize all optional values to empty, as you instructed.
+    # Initialize all optional values to empty.
     local username=""
     local primary_group=""
     local secondary_groups=""
@@ -198,10 +198,13 @@ _add_single_user() {
     local sudo_access="false"
     local password=""
 
-    # Loop through all arguments to parse named flags.
-    # This is the correct way to handle optional arguments.
+    # Loop through all arguments to parse named flags, as you suggested.
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --name|--username)
+                username="$2"
+                shift 2
+                ;;
             --group)
                 primary_group="$2"
                 shift 2
@@ -228,22 +231,17 @@ _add_single_user() {
                 return "$SOFT_FAILURE"
                 ;;
             *)
-                # The first non-flag argument is the username.
-                if [ -z "$username" ]; then
-                    username="$1"
-                else
-                    log_error "Too many arguments. Only one username can be specified directly."
-                    _display_help "add"
-                    return "$SOFT_FAILURE"
-                fi
-                shift 1
+                # Positional arguments for username are no longer supported to avoid ambiguity.
+                log_error "Invalid argument '$1'. Please specify the username with the --name flag."
+                _display_help "add"
+                return "$SOFT_FAILURE"
                 ;;
         esac
     done
 
     # --- Validation ---
     if [ -z "$username" ]; then
-        log_error "Username not provided for single user creation."
+        log_error "Username not provided. Please specify it with --name <username>."
         _display_help "add"
         return "$SOFT_FAILURE"
     fi
@@ -327,12 +325,12 @@ _add_single_user() {
 #   Displays a summary of created, existing, and failed users.
 # ------------------------------------------------------------------------------
 _add_users_core() {
-    local file_path=$1
-    local format=${2:-tsv}
+    local file_path="$1"
+    local format="${2:-tsv}"
 
     if [ ! -f "$file_path" ]; then
         log_error "Batch user file not found: '$file_path'"
-        return $HARD_FAILURE
+        return "$HARD_FAILURE"
     fi
 
     log_info "Starting batch user creation from file: '$file_path' (format: $format)"
@@ -342,66 +340,60 @@ _add_users_core() {
     local success_count=0
     local failure_count=0
 
+    # This function is in report.sh, ensure it's loaded.
+    initialize_batch_summary
+
     while IFS= read -r line || [[ -n "$line" ]]; do
         ((line_number++))
+        if [[ -z "$line" || "$line" =~ ^# ]]; then continue; fi
 
-        # Skip empty lines and comments
-        if [[ -z "$line" || "$line" =~ ^# ]]; then
-            continue
-        fi
-
-        local username
-        local primary_group
-        local secondary_groups
-        local shell
-        local comment
-
+        local username primary_group shell secondary_groups sudo comment
         case "$format" in
-            "tsv")
-                IFS=$'\t' read -r username primary_group secondary_groups shell comment <<< "$line"
-                ;;
-            "csv")
-                IFS=',' read -r username primary_group secondary_groups shell comment <<< "$line"
-                ;;
-            "json")
-                log_error "JSON batch processing is not yet implemented."
-                ((failure_count++))
-                continue
-                ;;
+            "tsv") IFS=$'\t' read -r username primary_group shell secondary_groups sudo comment <<< "$line" ;;
+            "csv") IFS=',' read -r username primary_group shell secondary_groups sudo comment <<< "$line" ;;
             *)
                 log_error "Unsupported batch format: '$format' on line $line_number."
-                ((failure_count++))
-                continue
-                ;;
+                ((failure_count++)); continue ;;
         esac
 
-        # Construct arguments for _add_single_user
         local args=()
-        [ -n "$primary_group" ] && args+=(--group "$primary_group")
-        [ -n "$secondary_groups" ] && args+=(--groups "$secondary_groups")
-        [ -n "$shell" ] && args+=(--shell "$shell")
-        [ -n "$comment" ] && args+=(--comment "$comment")
+        if [ -z "$username" ]; then
+            log_error "Skipping line $line_number: Username is missing."
+            ((failure_count++)); continue
+        fi
+        args+=(--name "$username")
 
-        if _add_single_user "$username" "${args[@]}"; then
+        [ -n "$primary_group" ] && args+=(--group "$primary_group")
+        [ -n "$shell" ] && args+=(--shell "$shell")
+        [ -n "$secondary_groups" ] && args+=(--secondary-groups "$secondary_groups")
+        [ -n "$comment" ] && args+=(--comment "$comment")
+        if [[ "$sudo" == "yes" || "$sudo" == "true" ]]; then
+            args+=(--sudo)
+        fi
+
+        # CORRECTED: Call _add_single_user with only the array of named flags.
+        if _add_single_user "${args[@]}"; then
             ((success_count++))
+            # This function is in report.sh, ensure it's loaded.
             _add_user_status_to_array "$username" "SUCCESS" "User created."
         else
             ((failure_count++))
             _add_user_status_to_array "$username" "FAILURE" "Failed to create user (see log for details)."
         fi
-
     done < "$file_path"
 
     log_info "Batch processing complete. Success: $success_count, Failure: $failure_count"
+    # This function is in report.sh, ensure it's loaded.
     print_batch_summary
 
-    if [ $failure_count -gt 0 ]; then
-        return $SOFT_FAILURE
+    if [ "$failure_count" -gt 0 ]; then
+        return "$SOFT_FAILURE"
     else
-        return $SUCCESS
+        return "$SUCCESS"
     fi
 }
 
+add_users() {
 # ------------------------------------------------------------------------------
 # FUNCTION: _provision_users_and_groups_core()
 #

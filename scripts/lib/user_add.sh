@@ -1,314 +1,524 @@
-#!/usr/bin/env bash
-# ==============================================================================
+#!/bin/bash
+# =================================================================================================
 #
-#          FILE: user_add.sh
+# LIBRARY: user_add
 #
-#         USAGE: source user_add.sh
-#                add_users "path/to/users.txt"
-#                add_users "path/to/users.json"
+# This library contains functions for adding users and groups to the system. It supports
+# adding single users, batch additions from text or JSON files, and a comprehensive
+# provisioning mode that creates both groups and users from a single JSON file.
 #
-#   DESCRIPTION: Provides high-level functions to add users individually or in
-#                bulk from a text or JSON file. It also handles provisioning
-#                users with groups and sudo access. The script is designed with
-#                a clear separation between core logic, I/O handling (text vs.
-#                JSON), and a public-facing interface for backward compatibility.
+# It is designed to be sourced and used by other scripts, primarily 'user.sh'.
 #
-#       OPTIONS: ---
-#  REQUIREMENTS: bash, coreutils, shadow, sudo, jq, and library dependencies.
-#          BUGS: ---
-#         NOTES: ---
-#       AUTHOR: Your Name, your.email@example.com
-# ORGANIZATION: Your Company
-#      CREATED: YYYY-MM-DD
-#     REVISION: 2.0.0
+# -------------------------------------------------------------------------------------------------
 #
-# ==============================================================================
+# FUNCTIONS:
+#   - _add_user_status_to_array: Helper to build and add user status JSON to an array.
+#   - _add_single_user: Core logic for creating a single user.
+#   - _add_users_core: Core logic for batch-adding users from a text or JSON file.
+#   - _provision_users_and_groups_core: Core logic for provisioning groups and then users.
+#   - add_users: Main entry point for all user addition operations.
+#
+# USAGE:
+#   This script is not meant to be executed directly. It should be sourced by other scripts like
+#   the main 'user.sh' script.
+#
+# =================================================================================================
 
-# ==============================================================================
-# SECTION: CORE LOGIC FUNCTIONS (JSON Out)
-# ==============================================================================
+# =================================================================================================
+# PRIVATE HELPER FUNCTIONS
+# =================================================================================================
 
-# ------------------------------------------------------------------------------
-# FUNCTION: _add_single_user()
-#
+# -------------------------------------------------------------------------------------------------
+# FUNCTION: _add_user_status_to_array
 # DESCRIPTION:
-#   The lowest-level function for creating a single user. It handles the
-#   actual 'useradd' command and is intended for internal use by the core
-#   functions.
+#   A helper function to build a standardized user status JSON object and add it to a
+#   specified array. This centralizes JSON construction for user operations.
 #
-# ARGUMENTS:
-#   $1: username
-#   $2: primary_group (optional)
-#   $3: secondary_groups (comma-separated, optional)
-#   $4: shell_access (optional)
+# PARAMETERS:
+#   $1 - target_array (nameref): The name of the array to add the JSON object to.
+#   $2 - username: The name of the user.
+#   $3 - status: The status of the operation (e.g., "success", "skipped", "failed").
+#   $4 - For "success": The user's primary group.
+#   $5 - For "success": The user's secondary groups.
+#   $6 - For "success": The user's shell.
+#   $4 - For "skipped" or "failed": The reason for the status.
+# -------------------------------------------------------------------------------------------------
+_add_user_status_to_array() {
+    local -n target_array=$1
+    local username=$2
+    local status=$3
+    local json_obj
+
+    case "$status" in
+        "success")
+            local primary_group=$4
+            local secondary_groups=$5
+            local shell=$6
+            json_obj=$(jq -n \
+                --arg u "$username" \
+                --arg pg "$primary_group" \
+                --arg sg "$secondary_groups" \
+                --arg sh "$shell" \
+                '{username: $u, status: "success", details: {primary_group: $pg, secondary_groups: $sg, shell: $sh}}')
+            ;;
+        "skipped"|"failed")
+            local reason=$4
+            json_obj=$(jq -n \
+                --arg u "$username" \
+                --arg s "$status" \
+                --arg r "$reason" \
+                '{username: $u, status: $s, reason: $r}')
+            ;;
+    esac
+    target_array+=("$json_obj")
+}
+
+# =================================================================================================
+# CORE FUNCTIONS
+# =================================================================================================
+
+# =================================================================================================
+# FUNCTION: _add_single_user
+# DESCRIPTION:
+#   Creates a single user on the system. It validates the username, checks for existing
+#   users, and constructs the appropriate useradd command based on provided parameters.
+#
+# PARAMETERS:
+#   $1 - username: The name of the user to create.
+#   $2 - primary_group: The primary group for the user. If empty, a group with the same
+#        name as the user is created.
+#   $3 - secondary_groups: A comma-separated list of secondary groups. Can be empty.
+#   $4 - shell_access: The shell to assign to the user. Defaults to "/bin/bash".
+#
+# GLOBALS:
+#   DRY_RUN: If set to "true", logs the intended action instead of executing.
+#
+# OUTPUTS:
+#   Logs the result of the operation.
 #
 # RETURNS:
-#   0 on success, 1 on failure.
-# ------------------------------------------------------------------------------
+#   0 - Success
+#   1 - Hard failure (invalid input, command failed)
+#   2 - Soft failure (user already exists)
+# -------------------------------------------------------------------------------------------------
 _add_single_user() {
-    local username="$1"
-    local primary_group="$2"
-    local secondary_groups="$3"
-    local shell_access="$4"
-    local useradd_opts=()
+    local username=$1
+    local primary_group=$2
+    local secondary_groups=$3
+    local shell_access=${4:-"/bin/bash"}
 
-    # Check if user already exists
-    if id -u "$username" &>/dev/null; then
-        return 1 # User exists
+    # Validate username
+    if ! validate_name "$username" "user"; then
+        echo "Invalid username format"
+        log_action "ERROR" "User creation failed: '$username' is not a valid username."
+        return 1
     fi
 
-    [[ -n "$primary_group" ]] && useradd_opts+=("-g" "$primary_group")
-    [[ -n "$secondary_groups" ]] && useradd_opts+=("-G" "$secondary_groups")
-    [[ -n "$shell_access" ]] && useradd_opts+=("-s" "$shell_access")
+    # Check if user already exists
+    if id "$username" &>/dev/null; then
+        log_action "INFO" "User '$username' already exists. Skipping."
+        return 2
+    fi
 
-    sudo useradd "${useradd_opts[@]}" "$username" &>/dev/null
-    return $?
+    # Build useradd command arguments
+    local useradd_args=(-m -s "$shell_access")
+    if [[ -n "$primary_group" ]]; then
+        useradd_args+=(-g "$primary_group")
+    else
+        useradd_args+=(-g "$username")
+    fi
+    if [[ -n "$secondary_groups" ]]; then
+        useradd_args+=(-G "$secondary_groups")
+    fi
+    useradd_args+=("$username")
+
+    # Execute or dry-run
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_action "DRY-RUN" "Would execute: useradd ${useradd_args[*]}"
+        return 0
+    else
+        log_action "INFO" "Creating user '$username' with command: useradd ${useradd_args[*]}"
+        if useradd "${useradd_args[@]}"; then
+            log_action "SUCCESS" "User '$username' created successfully."
+            return 0
+        else
+            local error_msg="Failed to create user '$username'."
+            log_action "ERROR" "$error_msg"
+            echo "$error_msg"
+            return 1
+        fi
+    fi
 }
 
-
-# ------------------------------------------------------------------------------
-# FUNCTION: _add_users_core()
-#
+# =================================================================================================
+# FUNCTION: _add_users_core
 # DESCRIPTION:
-#   Core logic for adding multiple users. It takes a pipe-delimited string,
-#   iterates through it, and attempts to create each user. It does not read
-#   files or print to the console; it only returns a JSON object summarizing
-#   the results.
+#   Processes a list of users from a text file or JSON file, creating them one by one.
+#   This function handles both text and JSON formats, delegating to the appropriate
+#   parser and creation logic.
 #
-# ARGUMENTS:
-#   $1: user_data_pipe - A pipe-delimited string ("username|groups|shell").
+# PARAMETERS:
+#   $1 - input_file: The path to the file containing user definitions.
+#   $2 - input_format: The format of the input file ("text" or "json").
+#
+# GLOBALS:
+#   DRY_RUN: Passed to the core creation function.
 #
 # OUTPUTS:
-#   Prints a single JSON string with "created", "existing", and "failed" arrays.
-# ------------------------------------------------------------------------------
+#   Displays a summary of created, existing, and failed users.
+#
+# RETURNS:
+#   0 - Success (even if some individual operations failed)
+# -------------------------------------------------------------------------------------------------
 _add_users_core() {
-    local user_data_pipe="$1"
-    local created_users=() existing_users=() failed_users=()
+    local input_file=$1
+    local input_format=$2
+    local created_users=()
+    local existing_users=()
+    local failed_users=()
 
-    # Process each line from the pipe-delimited string
-    while IFS='|' read -r username groups shell; do
-        local primary_group=""
-        local secondary_groups=""
+    if [[ "$input_format" == "json" ]]; then
+        while IFS= read -r user_json; do
+            local username=$(echo "$user_json" | jq -r '.username')
+            local primary_group=$(echo "$user_json" | jq -r '.primary_group // ""')
+            local secondary_groups=$(echo "$user_json" | jq -r '.secondary_groups // ""')
+            local shell_access=$(echo "$user_json" | jq -r '.shell // "/bin/bash"')
+            local sudo=$(echo "$user_json" | jq -r '.sudo // "no"')
 
-        # Normalize inputs
-        shell=$(normalize_shell "$shell")
-        # Split groups into primary and secondary
-        if [[ -n "$groups" ]]; then
-            primary_group=$(echo "$groups" | cut -d, -f1)
-            secondary_groups=$(echo "$groups" | cut -d, -f2-)
-        fi
+            local error_reason
+            error_reason=$(_add_single_user "$username" "$primary_group" "$secondary_groups" "$shell_access")
+            local exit_code=$?
 
-        # Attempt to create the user
-        if _add_single_user "$username" "$primary_group" "$secondary_groups" "$shell"; then
-            created_users+=("$(jq -n --arg u "$username" '{"username": $u, "status": "success"}')")
-        else
-            if id -u "$username" &>/dev/null; then
-                existing_users+=("$(jq -n --arg u "$username" '{"username": $u, "status": "skipped"}')")
+            if [[ $exit_code -eq 0 ]]; then
+                _add_user_status_to_array created_users "$username" "success" "$primary_group" "$secondary_groups" "$shell_access"
+                # Grant sudo access if specified
+                if [[ "$sudo" == "yes" ]]; then
+                    if [[ "$DRY_RUN" == "true" ]]; then
+                        log_action "DRY-RUN" "Would add user '$username' to sudo group."
+                    else
+                        usermod -aG sudo "$username"
+                        if [[ $? -eq 0 ]]; then
+                            log_action "SUCCESS" "Added user '$username' to sudo group."
+                        else
+                            log_action "ERROR" "Failed to add user '$username' to sudo group."
+                        fi
+                    fi
+                fi
+            elif [[ $exit_code -eq 2 ]]; then
+                _add_user_status_to_array existing_users "$username" "skipped" "User already exists"
             else
-                failed_users+=("$(jq -n --arg u "$username" --arg r "useradd command failed" '{"username": $u, "status": "error", "reason": $r}')")
+                _add_user_status_to_array failed_users "$username" "failed" "$error_reason"
             fi
-        fi
-    done <<< "$user_data_pipe"
+        done < <(jq -c '.users[]' "$input_file" 2>/dev/null)
+    else
+        # Text format processing (simplified for single-line usernames)
+        while IFS= read -r username; do
+            local error_reason
+            error_reason=$(_add_single_user "$username")
+            local exit_code=$?
 
-    # Assemble the final JSON output
-    jq -n \
-        --argjson created "$(echo "[]" | jq ". + [$(IFS=,; echo "${created_users[*]}")]")" \
-        --argjson existing "$(echo "[]" | jq ". + [$(IFS=,; echo "${existing_users[*]}")]")" \
-        --argjson failed "$(echo "[]" | jq ". + [$(IFS=,; echo "${failed_users[*]}")]")" \
-        '{created: $created, existing: $existing, failed: $failed}'
+            if [[ $exit_code -eq 0 ]]; then
+                _add_user_status_to_array created_users "$username" "success" "" "" "/bin/bash"
+            elif [[ $exit_code -eq 2 ]]; then
+                _add_user_status_to_array existing_users "$username" "skipped" "User already exists"
+            else
+                _add_user_status_to_array failed_users "$username" "failed" "$error_reason"
+            fi
+        done < "$input_file"
+    fi
+
+    # Display results
+    _display_add_users_bash_results "${created_users[@]}" "${existing_users[@]}" "${failed_users[@]}"
 }
 
-
-# ------------------------------------------------------------------------------
-# FUNCTION: _provision_users_and_groups_core()
-#
+# =================================================================================================
+# FUNCTION: _provision_users_and_groups_core
 # DESCRIPTION:
-#   Core logic for the end-to-end provisioning process. It creates groups first,
-#   then creates users and assigns them to the correct groups and sudo privileges.
-#   Returns a single JSON object summarizing all operations.
+#   Provisions groups and then users from a single JSON file. It first processes all
+#   groups defined in the file, then processes all users. This ensures that groups
+#   exist before users are created.
 #
-# ARGUMENTS:
-#   $1: provisioning_data_pipe - A pipe-delimited string
-#       ("username|primary_group|secondary_groups|sudo|shell").
+# PARAMETERS:
+#   $1 - json_file: The path to the JSON file containing user and group definitions.
+#
+# GLOBALS:
+#   DRY_RUN: Passed to the core creation functions.
 #
 # OUTPUTS:
-#   Prints a single JSON string with results for groups and users.
-# ------------------------------------------------------------------------------
+#   Displays a summary of created, existing, and failed users and groups.
+#
+# RETURNS:
+#   0 - Success (even if some individual operations failed)
+# -------------------------------------------------------------------------------------------------
 _provision_users_and_groups_core() {
-    local provisioning_data_pipe="$1"
-    local all_groups user_details
-    user_details=$(mktemp)
-    # Store details for user processing after group creation
-    echo "$provisioning_data_pipe" > "$user_details"
+    local json_file=$1
+    local created_users=()
+    local existing_users=()
+    local failed_users=()
+    local created_groups=()
+    local existing_groups=()
+    local failed_groups=()
+    local -A failed_groups_map=()
+    local -A groups_created_in_this_run=()
+    local -A users_successfully_created_for_group=()
 
-    # --- Group Creation Phase ---
-    all_groups=$(cut -d'|' -f2,3 "$user_details" | tr ',' '\n' | sort -u | grep -v '^\s*$')
-    local created_groups=() existing_groups=()
-    for group in $all_groups; do
-        if ! getent group "$group" &>/dev/null; then
-            if add_single_group "$group"; then
-                created_groups+=("$(jq -n --arg g "$group" '{"groupname": $g, "status": "success"}')")
-            fi
+
+    # --- 1. Create Groups ---
+    log_action "INFO" "Starting group creation phase..."
+    while IFS= read -r group_json; do
+        local groupname=$(echo "$group_json" | jq -r '.name')
+        add_single_group "$groupname"
+        local exit_code=$?
+
+        if [[ $exit_code -eq 0 ]]; then
+            _add_group_status_to_array created_groups "$groupname" "success"
+            groups_created_in_this_run["$groupname"]=1
+        elif [[ $exit_code -eq 2 ]]; then
+            _add_group_status_to_array existing_groups "$groupname" "skipped" "Group already exists"
         else
-            existing_groups+=("$(jq -n --arg g "$group" '{"groupname": $g, "status": "skipped"}')")
+            _add_group_status_to_array failed_groups "$groupname" "failed" "Failed to create group"
+            failed_groups_map["$groupname"]=1
+        fi
+    done < <(jq -c '.groups[]' "$json_file" 2>/dev/null)
+
+    # --- 2. Create Users ---
+    log_action "INFO" "Starting user creation phase..."
+    while IFS= read -r user_json; do
+        local username=$(echo "$user_json" | jq -r '.username')
+        local primary_group=$(echo "$user_json" | jq -r '.primary_group')
+        local secondary_groups=$(echo "$user_json" | jq -r '.secondary_groups // ""')
+        local shell_access=$(echo "$user_json" | jq -r '.shell // "/bin/bash"')
+        local sudo=$(echo "$user_json" | jq -r '.sudo // "no"')
+
+        # Check if the primary group failed to be created
+        if [[ ${failed_groups_map["$primary_group"]+abc} ]]; then
+            _add_user_status_to_array failed_users "$username" "failed" "Skipped because primary group '$primary_group' creation failed"
+            continue
+        fi
+
+        local error_reason
+        error_reason=$(_add_single_user "$username" "$primary_group" "$secondary_groups" "$shell_access")
+        local exit_code=$?
+
+        if [[ $exit_code -eq 0 ]]; then
+            _add_user_status_to_array created_users "$username" "success" "$primary_group" "$secondary_groups" "$shell_access"
+            users_successfully_created_for_group["$primary_group"]=1
+            # Grant sudo access if specified
+            if [[ "$sudo" == "yes" ]]; then
+                if [[ "$DRY_RUN" == "true" ]]; then
+                    log_action "DRY-RUN" "Would add user '$username' to sudo group."
+                else
+                    usermod -aG sudo "$username"
+                    if [[ $? -eq 0 ]]; then
+                        log_action "SUCCESS" "Added user '$username' to sudo group."
+                    else
+                        log_action "ERROR" "Failed to add user '$username' to sudo group."
+                    fi
+                fi
+            fi
+        elif [[ $exit_code -eq 2 ]]; then
+            _add_user_status_to_array existing_users "$username" "skipped" "User already exists"
+        else
+            _add_user_status_to_array failed_users "$username" "failed" "$error_reason"
+        fi
+    done < <(jq -c '.users[]' "$json_file" 2>/dev/null)
+
+    # --- 3. Rollback Orphaned Groups ---
+    log_action "INFO" "Starting rollback phase for orphaned groups..."
+    for group in "${!groups_created_in_this_run[@]}"; do
+        if [[ ! ${users_successfully_created_for_group["$group"]+abc} ]]; then
+            log_action "ROLLBACK" "Deleting group '$group' as no users were successfully created for it."
+            delete_single_group "$group"
         fi
     done
 
-    # --- User Creation Phase ---
-    local created_users=() existing_users=() failed_users=()
-    while IFS='|' read -r username primary_group secondary_groups sudo shell; do
-        shell=$(normalize_shell "$shell")
-        sudo=$(normalize_sudo "$sudo")
-
-        if _add_single_user "$username" "$primary_group" "$secondary_groups" "$shell"; then
-            created_users+=("$(jq -n --arg u "$username" '{"username": $u, "status": "success"}')")
-            # Grant sudo access if specified
-            if [[ "$sudo" == "yes" ]]; then
-                sudo usermod -aG sudo "$username"
-            fi
-        else
-            if id -u "$username" &>/dev/null; then
-                existing_users+=("$(jq -n --arg u "$username" '{"username": $u, "status": "skipped"}')")
-            else
-                failed_users+=("$(jq -n --arg u "$username" --arg r "useradd command failed" '{"username": $u, "status": "error", "reason": $r}')")
-            fi
-        fi
-    done < "$user_details"
-    rm -f "$user_details"
-
-    # --- Assemble Final JSON ---
-    jq -n \
-        --argjson groups_created "$(echo "[]" | jq ". + [$(IFS=,; echo "${created_groups[*]}")]")" \
-        --argjson groups_existing "$(echo "[]" | jq ". + [$(IFS=,; echo "${existing_groups[*]}")]")" \
-        --argjson users_created "$(echo "[]" | jq ". + [$(IFS=,; echo "${created_users[*]}")]")" \
-        --argjson users_existing "$(echo "[]" | jq ". + [$(IFS=,; echo "${existing_users[*]}")]")" \
-        --argjson users_failed "$(echo "[]" | jq ". + [$(IFS=,; echo "${failed_users[*]}")]")" \
-        '{
-            groups: {created: $groups_created, existing: $groups_existing},
-            users: {created: $users_created, existing: $users_existing, failed: $users_failed}
-        }'
+    # Display results
+    _display_add_users_bash_results "${created_users[@]}" "${existing_users[@]}" "${failed_users[@]}"
+    _display_add_groups_bash_results "${created_groups[@]}" "${existing_groups[@]}" "${failed_groups[@]}"
 }
 
+# =================================================================================================
+# PUBLIC FUNCTIONS
+# =================================================================================================
 
-# ==============================================================================
-# SECTION: DISPLAY/IO FUNCTIONS (Text and JSON)
-# ==============================================================================
-
-# ------------------------------------------------------------------------------
-# FUNCTION: add_users_from_text()
-#
+# =================================================================================================
+# FUNCTION: add_users
 # DESCRIPTION:
-#   Reads a simple text file (username per line), calls the core logic,
-#   and displays the results in a human-readable format.
-# ------------------------------------------------------------------------------
-add_users_from_text() {
-    local file_path="$1"
-    _display_banner "Adding Users" "$file_path"
-    # Convert text file to the pipe-delimited format expected by the core function
-    local user_data_pipe
-    user_data_pipe=$(awk '{print $1"||"}' "$file_path")
-    local results
-    results=$(_add_users_core "$user_data_pipe")
-    _display_add_users_bash_results "$results"
-}
-
-# ------------------------------------------------------------------------------
-# FUNCTION: add_users_from_json()
+#   The main entry point for adding users. It handles command-line argument parsing,
+#   input validation, and delegates to the appropriate core function based on the
+#   specified mode (single user, batch from text, batch from JSON, or provisioning).
 #
-# DESCRIPTION:
-#   Reads a JSON file, transforms it into the internal pipe-delimited format,
-#   calls the core logic, and echoes the resulting JSON object.
-#   **JSON In -> JSON Out**.
-# ------------------------------------------------------------------------------
-add_users_from_json() {
-    local file_path="$1"
-    # Convert JSON to the pipe-delimited format
-    local user_data_pipe
-    user_data_pipe=$(jq -r '.users[] | "\(.username)|\(.groups // "")|\(.shell // "")"' "$file_path")
-    # Call core function and echo its JSON output directly
-    _add_users_core "$user_data_pipe"
-}
-
-# ------------------------------------------------------------------------------
-# FUNCTION: provision_users_from_text()
+# PARAMETERS:
+#   $@ - All command-line arguments passed to the function.
 #
-# DESCRIPTION:
-#   Reads a detailed text file, calls the core provisioning logic, and
-#   displays the results in a human-readable format.
-# ------------------------------------------------------------------------------
-provision_users_from_text() {
-    local file_path="$1"
-    _display_banner "Provisioning Users and Groups" "$file_path"
-    # Text file format: user|group1,group2|sudo|shell
-    local provisioning_data_pipe
-    provisioning_data_pipe=$(cat "$file_path")
-    local results
-    results=$(_provision_users_and_groups_core "$provisioning_data_pipe")
-    _display_provision_bash_results "$results"
-}
-
-# ------------------------------------------------------------------------------
-# FUNCTION: provision_users_from_json()
+# OUTPUTS:
+#   Displays help text if arguments are invalid or if the help flag is provided.
+#   Otherwise, delegates to core functions for output.
 #
-# DESCRIPTION:
-#   Reads a detailed JSON file, transforms it to the internal format, calls
-#   the core provisioning logic, and echoes the resulting JSON object.
-#   **JSON In -> JSON Out**.
-# ------------------------------------------------------------------------------
-provision_users_from_json() {
-    local file_path="$1"
-    # Convert JSON to the pipe-delimited format
-    local provisioning_data_pipe
-    provisioning_data_pipe=$(jq -r '.users[] | "\(.username)|\(.primary_group // "")|\(.secondary_groups // "" | join(","))|\(.sudo // "no")|\(.shell // "/bin/bash")"' "$file_path")
-    # Call core function and echo its JSON output directly
-    _provision_users_and_groups_core "$provisioning_data_pipe"
-}
-
-
-# ==============================================================================
-# SECTION: PUBLIC INTERFACE (Backward Compatibility & Routing)
-# ==============================================================================
-
-# ------------------------------------------------------------------------------
-# FUNCTION: add_users()
-#
-# DESCRIPTION:
-#   A wrapper function that automatically detects if the input file is JSON
-#   or a simple text file and calls the appropriate handler.
-#
-# ARGUMENTS:
-#   $1: file_path - Path to the input file.
-# ------------------------------------------------------------------------------
+# RETURNS:
+#   0 - Success (even if some individual operations failed)
+#   1 - Invalid arguments or input validation failure
+# -------------------------------------------------------------------------------------------------
 add_users() {
-    local file_path="$1"
-    _ensure_jq
-    if ! _validate_input_file "$file_path"; then return 1; fi
+    local input_file=""
+    local input_format="text"
+    local mode="single"
+    local provisioning_mode=false
 
-    if jq -e . "$file_path" &>/dev/null; then
-        add_users_from_json "$file_path"
-    else
-        add_users_from_text "$file_path"
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --file)
+                input_file="$2"
+                input_format="text"
+                mode="batch"
+                shift 2
+                ;;
+            --json)
+                input_file="$2"
+                input_format="json"
+                mode="batch"
+                shift 2
+                ;;
+            --provision)
+                input_file="$2"
+                input_format="json"
+                mode="provision"
+                provisioning_mode=true
+                shift 2
+                ;;
+            --help)
+                _display_help "add"
+                return 0
+                ;;
+            *)
+                # Single user mode
+                local username="$1"
+                local primary_group="$2"
+                local secondary_groups="$3"
+                local shell_access="$4"
+                local sudo="$5"
+                shift $#
+                ;;
+        esac
+    done
+
+    # Input validation for batch/provisioning modes
+    if [[ "$mode" != "single" ]]; then
+        if [[ -z "$input_file" ]]; then
+            log_action "ERROR" "Input file is required for batch or provisioning mode."
+            return 1
+        fi
+        if [[ ! -f "$input_file" ]]; then
+            log_action "ERROR" "Input file not found: $input_file"
+            return 1
+        fi
     fi
-}
 
-# ------------------------------------------------------------------------------
-# FUNCTION: provision_users_with_groups()
-#
-# DESCRIPTION:
-#   A wrapper that detects file type (JSON or text) and routes to the
-#   appropriate provisioning function.
-#
-# ARGUMENTS:
-#   $1: file_path - Path to the input file.
-# ------------------------------------------------------------------------------
-provision_users_with_groups() {
-    local file_path="$1"
-    _ensure_jq
-    if ! _validate_input_file "$file_path"; then return 1; fi
+    # Batch validation for batch/provisioning modes
+    if [[ "$mode" != "single" ]]; then
+        log_action "INFO" "Starting batch validation phase..."
+        local validation_errors=0
 
-    if jq -e . "$file_path" &>/dev/null; then
-        provision_users_from_json "$file_path"
-    else
-        provision_users_from_text "$file_path"
+        # Validate usernames
+        while IFS= read -r user_json; do
+            local username=$(echo "$user_json" | jq -r '.username')
+            if [[ -z "$username" ]]; then
+                log_action "ERROR" "Validation failed: Missing username in JSON input."
+                ((validation_errors++))
+            elif ! validate_name "$username" "user"; then
+                log_action "ERROR" "Validation failed: Invalid username format: '$username'"
+                ((validation_errors++))
+            fi
+        done < <(jq -c '.users[]' "$input_file" 2>/dev/null)
+
+        # Validate groups if not in provisioning mode
+        if [[ "$provisioning_mode" == false ]]; then
+            while IFS= read -r user_json; do
+                local primary_group=$(echo "$user_json" | jq -r '.primary_group // ""')
+                local secondary_groups=$(echo "$user_json" | jq -r '.secondary_groups // ""')
+
+                # Check primary group existence
+                if [[ -n "$primary_group" ]] && ! getent group "$primary_group" &>/dev/null; then
+                    log_action "ERROR" "Validation failed: Primary group '$primary_group' does not exist on the system."
+                    ((validation_errors++))
+                fi
+
+                # Check secondary groups existence
+                if [[ -n "$secondary_groups" ]]; then
+                    IFS=',' read -ra SEC_GROUPS <<< "$secondary_groups"
+                    for group in "${SEC_GROUPS[@]}"; do
+                        if ! getent group "$group" &>/dev/null; then
+                            log_action "ERROR" "Validation failed: Secondary group '$group' does not exist on the system."
+                            ((validation_errors++))
+                        fi
+                    done
+                fi
+            done < <(jq -c '.users[]' "$input_file" 2>/dev/null)
+        else
+            # In provisioning mode, check if groups are defined in the same file
+            while IFS= read -r user_json; do
+                local primary_group=$(echo "$user_json" | jq -r '.primary_group // ""')
+                if [[ -n "$primary_group" ]]; then
+                    local group_exists_in_file
+                    group_exists_in_file=$(jq --arg pg "$primary_group" '.groups[]? | select(.name == $pg) | .name' "$input_file")
+                    if [[ -z "$group_exists_in_file" ]]; then
+                        log_action "ERROR" "Validation failed: Primary group '$primary_group' for user is not defined in the provisioning file."
+                        ((validation_errors++))
+                    fi
+                fi
+            done < <(jq -c '.users[]' "$input_file" 2>/dev/null)
+        fi
+
+        if [[ $validation_errors -gt 0 ]]; then
+            log_action "ERROR" "Batch validation failed with $validation_errors error(s). Aborting."
+            return 1
+        fi
+        log_action "SUCCESS" "Batch validation completed successfully."
     fi
+
+    # Execute based on mode
+    case "$mode" in
+        single)
+            _display_banner "User Addition"
+            local created_users=()
+            local existing_users=()
+            local failed_users=()
+
+            local error_reason
+            error_reason=$(_add_single_user "$username" "$primary_group" "$secondary_groups" "$shell_access")
+            local exit_code=$?
+
+            if [[ $exit_code -eq 0 ]]; then
+                _add_user_status_to_array created_users "$username" "success" "$primary_group" "$secondary_groups" "$shell_access"
+                if [[ "$sudo" == "yes" ]]; then
+                    if [[ "$DRY_RUN" == "true" ]]; then
+                        log_action "DRY-RUN" "Would add user '$username' to sudo group."
+                    else
+                        usermod -aG sudo "$username"
+                        if [[ $? -eq 0 ]]; then
+                            log_action "SUCCESS" "Added user '$username' to sudo group."
+                        else
+                            log_action "ERROR" "Failed to add user '$username' to sudo group."
+                        fi
+                    fi
+                fi
+            elif [[ $exit_code -eq 2 ]]; then
+                _add_user_status_to_array existing_users "$username" "skipped" "User already exists"
+            else
+                _add_user_status_to_array failed_users "$username" "failed" "$error_reason"
+            fi
+
+            _display_add_users_bash_results "${created_users[@]}" "${existing_users[@]}" "${failed_users[@]}"
+            return $exit_code
+            ;;
+        batch)
+            _display_banner "User Addition"
+            _add_users_core "$input_file" "$input_format"
+            ;;
+        provision)
+            _display_banner "User and Group Provisioning"
+            _provision_users_and_groups_core "$input_file"
+            ;;
+    esac
 }

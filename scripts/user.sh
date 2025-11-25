@@ -86,6 +86,7 @@ source "$LIB_DIR/log.sh"
 source "$LIB_DIR/utils.sh"
 source "$LIB_DIR/help.sh"
 source "$LIB_DIR/view.sh"
+source "$LIB_DIR/validation.sh"
 source "$LIB_DIR/report.sh"
 source "$LIB_DIR/json_input.sh"
 source "$LIB_DIR/user_add.sh"
@@ -194,6 +195,11 @@ init_script() {
 #   $@ - All command-line arguments passed to the script.
 # =================================================================================================
 parse_arguments() {
+    # Handle help request as a priority
+    if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+        show_help "$2"
+    fi
+
     # The first argument is expected to be the primary operation.
     if [[ "$1" =~ ^-- ]]; then
         OPERATION="$1"

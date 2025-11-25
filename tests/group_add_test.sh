@@ -1,150 +1,154 @@
 #!/usr/bin/env bash
-# =================================================
-# Test Suite for Group Add Functionality
-# =================================================
+# =============================================================================
+#
+#          FILE: group_add_test.sh
+#
+#         USAGE: ./group_add_test.sh
+#
+#   DESCRIPTION: Test suite for the group_add.sh library. It covers single
+#                group addition, batch processing from files, validation,
+#                and detailed JSON reporting.
+#
+# =============================================================================
 
-# Load test helpers
-. "$(dirname "$0")"/test_helpers.sh
-. "$(dirname "$0")"/../scripts/lib/output_helpers.sh
-. "$(dirname "$0")"/../scripts/lib/group_add.sh
+# --- Test Setup ---
+# Load test helpers and the script to be tested
+source "$(dirname "$0")/test_helpers.sh"
+source "$(dirname "$0")/../scripts/lib/validation.sh"
+source "$(dirname "$0")/../scripts/lib/output_helpers.sh"
+source "$(dirname "$0")/../scripts/lib/group_add.sh"
 
-# =================================================
-# Test Cases
-# =================================================
+# --- Mocks & Stubs ---
+
+# Mock dependencies to isolate the script
+_ensure_jq() { return 0; }
+_display_banner() { echo "BANNER: $1"; }
+
+# Global mock log
+MOCK_LOG=""
+
+# Mock system commands
+groupadd() { echo "groupadd_called: $@" >> "$MOCK_LOG"; return 0; }
+getent() {
+    # Simulate group 'existing_group' as already existing
+    [[ "$1" == "group" && "$2" == "existing_group" ]] && echo "existing_group:x:1001:" && return 0
+    return 1
+}
+
+# --- Test Suite Setup & Teardown ---
+
+setup() {
+    MOCK_LOG=$(mktemp)
+}
+
+teardown() {
+    rm -f "$MOCK_LOG"
+}
+
+# =============================================================================
+# TEST CASES
+# =============================================================================
 
 test_add_single_group_success() {
-    # Mock groupadd and usermod to simulate success
-    mock_command "groupadd" "echo 'Mocked groupadd success'"
-    mock_command "usermod" "echo 'Mocked usermod success'"
-
-    # Run the function
-    add_single_group "testgroup" "user1,user2"
-
-    # Assertions
-    assert_contain "$OUTPUT" "Creating group: testgroup" "Should show creation message"
-    assert_contain "$OUTPUT" "Added member: user1" "Should show user1 added"
-    assert_contain "$OUTPUT" "Added member: user2" "Should show user2 added"
-    assert_not_contain "$OUTPUT" "Failed" "Should not show any failure message"
-
-    # Cleanup mocks
-    unmock_command "groupadd"
-    unmock_command "usermod"
+    # --- Given ---
+    local groupname="new_group"
+    
+    # --- When ---
+    local output
+    output=$(add_groups "$groupname" "single")
+    
+    # --- Then ---
+    assert_contain "$output" '{"status":"success","groupname":"new_group"}' "JSON output should report success" "test_add_single_group_success"
+    assert_file_contains "$MOCK_LOG" "groupadd_called: new_group" "groupadd should be called for new_group" "test_add_single_group_success"
 }
 
 test_add_single_group_already_exists() {
-    # Mock getent to simulate group existence
-    mock_command "getent" "echo 'testgroup:x:1001:'"
-
-    # Run the function
-    add_single_group "testgroup" ""
-
-    # Assertions
-    assert_contain "$OUTPUT" "Group 'testgroup' already exists. Skipping..." "Should show skipping message"
-
-    # Cleanup mock
-    unmock_command "getent"
+    # --- Given ---
+    local groupname="existing_group"
+    
+    # --- When ---
+    local output
+    output=$(add_groups "$groupname" "single")
+    
+    # --- Then ---
+    assert_contain "$output" '{"status":"skipped","groupname":"existing_group","reason":"Group already exists"}' "JSON output should report group as skipped" "test_add_single_group_already_exists"
+    assert_file_not_contains "$MOCK_LOG" "groupadd_called" "groupadd should not be called for an existing group" "test_add_single_group_already_exists"
 }
 
-test_add_groups_from_text_file() {
-    # Create a dummy text file
-    cat > groups.txt <<EOL
-# This is a comment
-group1
-group2
-group3 # Inline comment
-EOL
-
-    # Mock groupadd
-    mock_command "groupadd" "echo 'Mocked groupadd success'"
-
-    # Run the function
-    add_groups "groups.txt" "text"
-
-    # Assertions
-    assert_contain "$OUTPUT" "Creating group: group1" "Should process group1"
-    assert_contain "$OUTPUT" "Creating group: group2" "Should process group2"
-    assert_contain "$OUTPUT" "Creating group: group3" "Should process group3"
-    assert_contain "$OUTPUT" "Operation Summary" "Should show summary"
-    assert_contain "$OUTPUT" "Created:         3" "Should report 3 created"
-
-    # Cleanup
-    unmock_command "groupadd"
-    rm groups.txt
+test_add_groups_from_text_file_with_validation_failure() {
+    # --- Given ---
+    local text_file
+    text_file=$(mktemp)
+    # 'InvalidGroup' contains uppercase letters, which is invalid.
+    echo -e "valid_group\\nInvalidGroup" > "$text_file"
+    
+    # --- When ---
+    local output
+    output=$(add_groups "$text_file" "text")
+    
+    # --- Then ---
+    assert_contain "$output" '{"status":"failed","groupname":"InvalidGroup","reason":"Invalid group name format"}' "JSON should report the invalid group as failed" "test_add_groups_from_text_file_with_validation_failure"
+    assert_file_not_contains "$MOCK_LOG" "groupadd_called: InvalidGroup" "groupadd should not be called for the invalid group" "test_add_groups_from_text_file_with_validation_failure"
+    # It should still create the valid one
+    assert_file_contains "$MOCK_LOG" "groupadd_called: valid_group" "groupadd should be called for the valid group" "test_add_groups_from_text_file_with_validation_failure"
+    
+    # --- Cleanup ---
+    rm "$text_file"
 }
 
-test_add_groups_from_json_file() {
-    # Create a dummy JSON file
-    cat > groups.json <<EOL
+test_add_groups_from_json_file_success_and_skipped() {
+    # --- Given ---
+    local json_file
+    json_file=$(mktemp)
+    cat <<EOF > "$json_file"
 {
   "groups": [
-    {
-      "name": "devs",
-      "action": "create",
-      "members": ["alice", "bob"]
-    },
-    {
-      "name": "admins",
-      "action": "create"
-    },
-    {
-      "name": "testers",
-      "action": "ignore"
-    }
+    { "groupname": "new_json_group" },
+    { "groupname": "existing_group" }
   ]
 }
-EOL
-
-    # Mocks
-    mock_command "jq" "jq" # Use real jq
-    mock_command "groupadd" "echo 'Mocked groupadd success'"
-    mock_command "usermod" "echo 'Mocked usermod success'"
-    mock_command "id" "echo 'mock id success'" # Assume users exist
-
-    # Run the function
-    add_groups "groups.json" "json"
-
-    # Assertions
-    assert_contain "$OUTPUT" "Creating group: devs" "Should process devs group"
-    assert_contain "$OUTPUT" "Added member: alice" "Should add alice to devs"
-    assert_contain "$OUTPUT" "Creating group: admins" "Should process admins group"
-    assert_contain "$OUTPUT" "Skipping group 'testers'" "Should skip testers group"
-    assert_contain "$OUTPUT" "Operation Summary" "Should show summary"
-    assert_contain "$OUTPUT" "Created:         2" "Should report 2 created"
-    assert_contain "$OUTPUT" "Skipped:         1" "Should report 1 skipped"
-
-    # Cleanup
-    unmock_command "jq"
-    unmock_command "groupadd"
-    unmock_command "usermod"
-    unmock_command "id"
-    rm groups.json
+EOF
+    
+    # --- When ---
+    local output
+    output=$(add_groups "$json_file" "json")
+    
+    # --- Then ---
+    assert_contain "$output" '{"status":"success","groupname":"new_json_group"}' "JSON should report new_json_group as created" "test_add_groups_from_json_file_success_and_skipped"
+    assert_contain "$output" '{"status":"skipped","groupname":"existing_group","reason":"Group already exists"}' "JSON should report existing_group as skipped" "test_add_groups_from_json_file_success_and_skipped"
+    assert_file_contains "$MOCK_LOG" "groupadd_called: new_json_group" "groupadd should be called for new_json_group" "test_add_groups_from_json_file_success_and_skipped"
+    assert_file_not_contains "$MOCK_LOG" "groupadd_called: existing_group" "groupadd should not be called for existing_group" "test_add_groups_from_json_file_success_and_skipped"
+    
+    # --- Cleanup ---
+    rm "$json_file"
 }
 
-test_add_groups_auto_detect_format() {
-    # Create a dummy JSON file
-    cat > groups.json <<EOL
-{ "groups": [{ "name": "autodetect", "action": "create" }] }
-EOL
-
-    # Mocks
-    mock_command "jq" "jq"
-    mock_command "groupadd" "echo 'Mocked groupadd success'"
-
-    # Run with auto-detection
-    add_groups "groups.json" "auto"
-
-    # Assertions
-    assert_contain "$OUTPUT" "Format: json" "Should auto-detect JSON format"
-    assert_contain "$OUTPUT" "Creating group: autodetect" "Should process the group"
-
-    # Cleanup
-    unmock_command "jq"
-    unmock_command "groupadd"
-    rm groups.json
+test_add_groups_from_json_with_invalid_name() {
+    # --- Given ---
+    local json_file
+    json_file=$(mktemp)
+    cat <<EOF > "$json_file"
+{
+  "groups": [
+    { "groupname": "bad-group-name-" }
+  ]
+}
+EOF
+    
+    # --- When ---
+    local output
+    output=$(add_groups "$json_file" "json")
+    
+    # --- Then ---
+    assert_contain "$output" '{"status":"failed","groupname":"bad-group-name-","reason":"Invalid group name format"}' "JSON should report the invalid group as failed" "test_add_groups_from_json_with_invalid_name"
+    assert_file_not_contains "$MOCK_LOG" "groupadd_called" "groupadd should not be called if validation fails" "test_add_groups_from_json_with_invalid_name"
+    
+    # --- Cleanup ---
+    rm "$json_file"
 }
 
 
-# =================================================
-# Run Tests
-# =================================================
+# =============================================================================
+# --- Run Tests ---
+# =============================================================================
 run_test_suite

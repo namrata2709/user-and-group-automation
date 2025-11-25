@@ -54,6 +54,17 @@ BUILD_DATE="2024-07-29"
 # Ensures that the script can be run from any directory by setting the base path.
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 LIB_DIR="$SCRIPT_DIR/lib"
+
+# Source all library files
+for lib_file in "$LIB_DIR"/*.sh; do
+    source "$lib_file"
+done
+
+# Source all utility files
+for util_file in "$LIB_DIR"/utils/*.sh; do
+    source "$util_file"
+done
+
 LOG_DIR="$SCRIPT_DIR/log"
 # The config directory is at the project root, which is one level above the scripts directory.
 CONFIG_DIR="$SCRIPT_DIR/../config"

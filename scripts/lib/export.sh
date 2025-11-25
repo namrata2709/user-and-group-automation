@@ -223,7 +223,7 @@ export_all_json() {
 # PUBLIC: Main Export Dispatcher
 # =============================================================================
 
-function export_data() {
+export_data() {
     local export_type="$1"
     local format="$2"
     local output_file="$3"

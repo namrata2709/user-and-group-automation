@@ -398,7 +398,7 @@ aggregate_users() {
         output+="|count=$count"
 
         for func in "${agg_funcs[@]}"; do
-            if [[ "$func" =~ (sum|avg|min|max)\(([^)]+)\) ]]; then
+            if [[ $func =~ ^(sum|avg|min|max)\(([^)]*)\)$ ]]; then
                 local op="${BASH_REMATCH[1]}"
                 local field="${BASH_REMATCH[2]}"
                 

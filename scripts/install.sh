@@ -22,7 +22,7 @@ LIB_DIR="$SCRIPT_DIR/lib"
 CONFIG_DIR="$INSTALL_DIR/config"
 EXAMPLES_DIR="$SCRIPT_DIR/examples"
 LOG_FILE="/var/log/user_mgmt_install.log"
-$CONFIG_FILE="$CONFIG_DIR/user_mgmt.conf"
+CONFIG_FILE="$CONFIG_DIR/user_mgmt.conf"
 INSTALL_FLAG_FILE="$INSTALL_DIR/.install_complete"
 
 # Print functions

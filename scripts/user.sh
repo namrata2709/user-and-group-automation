@@ -53,7 +53,7 @@ BUILD_DATE="2024-07-29"
 # --- Path Definitions ---
 # Ensures that the script can be run from any directory by setting the base path.
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-LIB_DIR="$SCRIPT_DIR/lib"
+LIB_DIR="$SCRIPT_DIR/scripts/lib"
 
 # Source all library files
 for lib_file in "$LIB_DIR"/*.sh; do

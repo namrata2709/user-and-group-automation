@@ -55,23 +55,20 @@ BUILD_DATE="2024-07-29"
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 LIB_DIR="$SCRIPT_DIR/lib"
 
-# Source all library files
-for lib_file in "$LIB_DIR"/*.sh; do
-    source "$lib_file"
+# Source all utility files first to ensure their functions are available to other libraries.
+UTILS_DIR="$LIB_DIR/utils"
+find "$UTILS_DIR" -type f -name "*.sh" | while read -r utility_file; do
+    source "$utility_file"
 done
 
-# Source all utility files
-for util_file in "$LIB_DIR"/utils/*.sh; do
-    source "$util_file"
+# Source all other library files.
+# The find command locates all .sh files in the lib directory (excluding the utils subdirectory).
+find "$LIB_DIR" -maxdepth 1 -type f -name "*.sh" | while read -r library_file; do
+    source "$library_file"
 done
 
-LOG_DIR="$SCRIPT_DIR/log"
-# The config directory is at the project root, which is one level above the scripts directory.
-CONFIG_DIR="$SCRIPT_DIR/../config"
-
-# --- Configuration Loading ---
-# Loads the main configuration file. Exits if not found.
-if [ -f "$CONFIG_DIR/user_mgmt.conf" ]; then
+# Load configuration file
+if [ -f "$CONFIG_FILE" ]; then
     source "$CONFIG_DIR/user_mgmt.conf"
 else
     echo "Error: Configuration file 'user_mgmt.conf' not found in '$CONFIG_DIR'."

@@ -15,6 +15,34 @@
 source "$LIB_DIR/utils/output.sh"
 
 # =============================================================================
+# FUNCTION: show_general_help
+# DESCRIPTION:
+#   Displays the main help page with a list of all available commands.
+# =============================================================================
+show_general_help() {
+    display_banner "User Management Script - Help"
+    echo -e "${BOLD}USAGE:${NORMAL}"
+    echo -e "  user <command> [options]"
+    echo
+    echo -e "${BOLD}AVAILABLE COMMANDS:${NORMAL}"
+    echo -e "  ${CYAN}add${NORMAL}              - Add a new user or users from a file."
+    echo -e "  ${CYAN}add-group${NORMAL}        - Add a new group or groups from a file."
+    echo -e "  ${CYAN}update${NORMAL}           - Update an existing user's attributes."
+    echo -e "  ${CYAN}update-group${NORMAL}     - Update an existing group's attributes."
+    echo -e "  ${CYAN}delete${NORMAL}           - Delete a user."
+    echo -e "  ${CYAN}delete-group${NORMAL}     - Delete a group."
+    echo -e "  ${CYAN}lock${NORMAL}             - Lock a user's account."
+    echo -e "  ${CYAN}view${NORMAL}             - View users or groups with filters."
+    echo -e "  ${CYAN}export${NORMAL}           - Export user or group data."
+    echo -e "  ${CYAN}report${NORMAL}           - Generate system reports."
+    echo -e "  ${CYAN}compliance${NORMAL}       - Run compliance checks."
+    echo -e "  ${CYAN}help${NORMAL}             - Show this help message or help for a specific command."
+    echo
+    echo -e "For more detailed help on a specific command, run:"
+    echo -e "  user help <command>"
+}
+
+# =============================================================================
 # FUNCTION: _display_help
 # DESCRIPTION:
 #   Displays detailed help information for a specific command.
@@ -27,14 +55,14 @@ _display_help() {
 
     case "$command" in
         "add")
-            _display_banner "Help: Add User(s)"
+            display_banner "Help: Add User(s)"
             echo -e "${BOLD}DESCRIPTION:${NORMAL}"
             echo -e "  Adds a single user or multiple users in batch from a file."
             echo
             echo -e "${BOLD}USAGE:${NORMAL}"
-            echo -e "  ${CYAN}add_users [username] [primary_group] [secondary_groups] [shell] [sudo]${NORMAL}"
-            echo -e "  ${CYAN}add_users --file <path/to/users.txt>${NORMAL}"
-            echo -e "  ${CYAN}add_users --json <path/to/users.json>${NORMAL}"
+            echo -e "  user add [username] [primary_group] [secondary_groups] [shell] [sudo]"
+            echo -e "  user add --file <path/to/users.txt>"
+            echo -e "  user add --json <path/to/users.json>"
             echo
             echo -e "${BOLD}MODES:${NORMAL}"
             echo -e "  ${UNDERLINE}Single User Mode:${NORMAL}"
@@ -55,24 +83,24 @@ _display_help() {
             echo
             echo -e "${BOLD}EXAMPLES:${NORMAL}"
             echo -e "  ${GREEN}# Add a single user 'testuser' with default settings${NORMAL}"
-            echo -e "  add_users testuser"
+            echo -e "  user add testuser"
             echo
             echo -e "  ${GREEN}# Add user 'jane' to group 'developers' with a zsh shell and sudo rights${NORMAL}"
-            echo -e "  add_users jane developers dev,www /bin/zsh yes"
+            echo -e "  user add jane developers dev,www /bin/zsh yes"
             echo
             echo -e "  ${GREEN}# Add users from a text file${NORMAL}"
-            echo -e "  add_users --file ./user_list.txt"
+            echo -e "  user add --file ./user_list.txt"
             ;;
 
-        "add_groups")
-            _display_banner "Help: Add Group(s)"
+        "add-group")
+            display_banner "Help: Add Group(s)"
             echo -e "${BOLD}DESCRIPTION:${NORMAL}"
             echo -e "  Adds one or more groups to the system."
             echo
             echo -e "${BOLD}USAGE:${NORMAL}"
-            echo -e "  ${CYAN}add_groups [group1] [group2] ...${NORMAL}"
-            echo -e "  ${CYAN}add_groups --file <path/to/groups.txt>${NORMAL}"
-            echo -e "  ${CYAN}add_groups --json <path/to/groups.json>${NORMAL}"
+            echo -e "  user add-group [group1] [group2] ..."
+            echo -e "  user add-group --file <path/to/groups.txt>"
+            echo -e "  user add-group --json <path/to/groups.json>"
             echo
             echo -e "${BOLD}MODES:${NORMAL}"
             echo -e "  ${UNDERLINE}Single/Multiple Group Mode:${NORMAL}"
@@ -87,31 +115,30 @@ _display_help() {
             echo
             echo -e "${BOLD}EXAMPLES:${NORMAL}"
             echo -e "  ${GREEN}# Add a single group 'newgroup'${NORMAL}"
-            echo -e "  add_groups newgroup"
+            echo -e "  user add-group newgroup"
             echo
             echo -e "  ${GREEN}# Add multiple groups at once${NORMAL}"
-            echo -e "  add_groups webdev sysadmin dbadmin"
+            echo -e "  user add-group webdev sysadmin dbadmin"
             echo
             echo -e "  ${GREEN}# Add groups from a JSON file${NORMAL}"
-            echo -e "  add_groups --json ./group_list.json"
+            echo -e "  user add-group --json ./group_list.json"
             ;;
 
         "provision")
-            _display_banner "Help: Provision Users and Groups"
+            display_banner "Help: Provision Users and Groups"
             echo -e "${BOLD}DESCRIPTION:${NORMAL}"
             echo -e "  Provisions both groups and users from a single JSON file."
             echo -e "  The script creates all groups first, then creates the users."
-            echo -e "  It includes rollback for newly created groups if no users are successfully assigned to them."
             echo
             echo -e "${BOLD}USAGE:${NORMAL}"
-            echo -e "  ${CYAN}add_users --provision <path/to/provision.json>${NORMAL}"
+            echo -e "  user provision --file <path/to/provision.json>"
             echo
             echo -e "${BOLD}ARGUMENTS:${NORMAL}"
-            echo -e "  ${YELLOW}--provision <file_path>${NORMAL}: (Required) The JSON file containing group and user definitions."
+            echo -e "  ${YELLOW}--file <file_path>${NORMAL}: (Required) The JSON file containing group and user definitions."
             echo
             echo -e "${BOLD}EXAMPLE:${NORMAL}"
             echo -e "  ${GREEN}# Provision groups and users from a single file${NORMAL}"
-            echo -e "  add_users --provision ./config/provision.json"
+            echo -e "  user provision --file ./config/provision.json"
             ;;
 
         *)
@@ -120,68 +147,3 @@ _display_help() {
     esac
     return 0
 }
-
-# ==============================================================================
-# MAIN EXECUTION
-# ==============================================================================
-main() {
-    # Ensure at least one command is provided
-    if [[ $# -eq 0 ]]; then
-        show_general_help
-        return 1
-    fi
-
-    local command="$1"
-    shift
-
-    case "$command" in
-        add)
-            add_user_main "$@"
-            ;;
-        add-group)
-            add_group_main "$@"
-            ;;
-        update)
-            update_user_main "$@"
-            ;;
-        update-group)
-            update_group_main "$@"
-            ;;
-        delete)
-            delete_user_main "$@"
-            ;;
-        delete-group)
-            delete_group_main "$@"
-            ;;
-        lock)
-            lock_user_main "$@"
-            ;;
-        view)
-            view_main "$@"
-            ;;
-        export)
-            export_main "$@"
-            ;;
-        report)
-            report_main "$@"
-            ;;
-        compliance)
-            compliance_main "$@"
-            ;;
-        help)
-            if [[ -n "$1" ]]; then
-                _display_help "$1"
-            else
-                show_general_help
-            fi
-            ;;
-        *)
-            error_message "Unknown command: $command"
-            show_general_help
-            return 1
-            ;;
-    esac
-}
-
-# Execute the main function with all script arguments
-main "$@"

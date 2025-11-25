@@ -238,7 +238,7 @@ export_data() {
     info_message "Output:  $output_file"
     echo ""
     
-    local export_function_name="export_${export_type}_${format}"
+    local export_function_name="export_${export_type}_${format}";
 
     if [[ "$export_type" == "all" && "$format" != "json" ]]; then
         error_message "'all' export only supports JSON format"

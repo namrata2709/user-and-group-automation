@@ -698,42 +698,65 @@ execute_operation() {
 #   The main entry point of the script. It handles initial checks for help and version flags,
 #   then orchestrates the parsing of arguments, script initialization, and operation execution.
 #   Finally, it logs the completion of the script.
-#
-# PARAMETERS:
-#   $@ - All command-line arguments passed to the script.
 # =================================================================================================
 main() {
-    # Quick check for top-level help or version flags before parsing everything.
-    if [ $# -eq 0 ] || [[ "$1" == "--help" || "$1" == "-h" ]]; then
-        if [ $# -ge 2 ]; then
-            show_specific_help "$2"
+    if [[ "$1" == "help" || $# -eq 0 ]]; then
+        if [[ -n "$2" ]]; then
+            _display_help "$2"
         else
             show_general_help
         fi
-        exit 0
+        return 0
     fi
 
-    if [[ "$1" == "--version" || "$1" == "-v" ]]; then
-        echo "EC2 User Management System v$VERSION"
-        echo "Build: $BUILD_DATE"
-        exit 0
-    fi
-
-    # Core script execution flow.
+    # For all other commands, parse arguments and execute the operation
     parse_arguments "$@"
-    init_script
     execute_operation
-
-    # Display a final success message for non-JSON, non-dry-run operations.
-    if [ "$DRY_RUN" = false ] && [ "$DELETE_MODE" != "check" ] && [ "$JSON_OUTPUT" = false ]; then
-        echo ""
-        echo "${ICON_SUCCESS} Operation completed successfully"
-        echo "${ICON_INFO} Log file: $LOG_FILE"
-    fi
-
-    log_info "Script completed: user.sh v$VERSION"
 }
 
-# --- Script Execution ---
-# Passes all script arguments to the main function to start execution.
+execute_command() {
+    local command="$1"
+    shift
+    case "$command" in
+        add)
+            add_user_main "$@"
+            ;;
+        add-group)
+            add_group_main "$@"
+            ;;
+        update)
+            update_user_main "$@"
+            ;;
+        update-group)
+            update_group_main "$@"
+            ;;
+        delete)
+            delete_user_main "$@"
+            ;;
+        delete-group)
+            delete_group_main "$@"
+            ;;
+        lock)
+            lock_user_main "$@"
+            ;;
+        view)
+            view_main "$@"
+            ;;
+        export)
+            export_main "$@"
+            ;;
+        report)
+            report_main "$@"
+            ;;
+        compliance)
+            compliance_main "$@"
+            ;;
+        *)
+            error_message "Unknown command: $command"
+            show_general_help
+            return 1
+            ;;
+    esac
+}
+
 main "$@"

@@ -10,7 +10,7 @@
 #                JSON files, and a provisioning mode to create both groups and
 #                users from a single JSON file. It is designed to be sourced by
 #                other scripts, providing a robust and structured way to manage
-                user creation.
+#                user creation.
 #
 #       OPTIONS: ---
 #  REQUIREMENTS: bash, coreutils, jq, getent

@@ -120,3 +120,68 @@ _display_help() {
     esac
     return 0
 }
+
+# ==============================================================================
+# MAIN EXECUTION
+# ==============================================================================
+main() {
+    # Ensure at least one command is provided
+    if [[ $# -eq 0 ]]; then
+        show_general_help
+        return 1
+    fi
+
+    local command="$1"
+    shift
+
+    case "$command" in
+        add)
+            add_user_main "$@"
+            ;;
+        add-group)
+            add_group_main "$@"
+            ;;
+        update)
+            update_user_main "$@"
+            ;;
+        update-group)
+            update_group_main "$@"
+            ;;
+        delete)
+            delete_user_main "$@"
+            ;;
+        delete-group)
+            delete_group_main "$@"
+            ;;
+        lock)
+            lock_user_main "$@"
+            ;;
+        view)
+            view_main "$@"
+            ;;
+        export)
+            export_main "$@"
+            ;;
+        report)
+            report_main "$@"
+            ;;
+        compliance)
+            compliance_main "$@"
+            ;;
+        help)
+            if [[ -n "$1" ]]; then
+                _display_help "$1"
+            else
+                show_general_help
+            fi
+            ;;
+        *)
+            error_message "Unknown command: $command"
+            show_general_help
+            return 1
+            ;;
+    esac
+}
+
+# Execute the main function with all script arguments
+main "$@"

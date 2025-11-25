@@ -282,51 +282,79 @@ _add_single_user() {
 #   Displays a summary of created, existing, and failed users.
 # ------------------------------------------------------------------------------
 _add_users_core() {
-    local created_users=()
-    local existing_users=()
-    local failed_users=()
+    local file_path=$1
+    local format=${2:-tsv}
 
-    while IFS= read -r user_json; do
-        local username=$(echo "$user_json" | jq -r '.username')
-        local primary_group=$(echo "$user_json" | jq -r '.primary_group // ""')
-        local secondary_groups=$(echo "$user_json" | jq -r '.secondary_groups // ""')
-        local shell_access=$(echo "$user_json" | jq -r '.shell // "/bin/bash"')
-        local sudo=$(echo "$user_json" | jq -r '.sudo // "no"')
+    if [ ! -f "$file_path" ]; then
+        log_error "Batch user file not found: '$file_path'"
+        return $HARD_FAILURE
+    fi
 
-        local error_reason
-        _add_single_user "$username" "$primary_group" "$secondary_groups" "$shell_access"
-        local exit_code=$?
+    log_info "Starting batch user creation from file: '$file_path' (format: $format)"
+    _display_banner "Batch User Creation"
 
-        if [[ $exit_code -eq 0 ]]; then
-            # Grant sudo access if specified
-            if [[ "$sudo" == "yes" ]]; then
-                if [[ "$DRY_RUN" == "true" ]]; then
-                    log_action "DRY-RUN" "Would add user '$username' to sudo group."
-                    _add_user_status_to_array created_users "$username" "success" "$primary_group" "$secondary_groups" "$shell_access"
-                else
-                    usermod -aG sudo "$username"
-                    if [[ $? -eq 0 ]]; then
-                        log_action "SUCCESS" "Added user '$username' to sudo group."
-                        _add_user_status_to_array created_users "$username" "success" "$primary_group" "$secondary_groups" "$shell_access"
-                    else
-                        log_action "ERROR" "Failed to add user '$username' to sudo group. Rolling back user creation."
-                        _rollback_user_creation "$username"
-                        _add_user_status_to_array failed_users "$username" "failed" "Failed to grant sudo privileges."
-                    fi
-                fi
-            else
-                _add_user_status_to_array created_users "$username" "success" "$primary_group" "$secondary_groups" "$shell_access"
-            fi
-        elif [[ $exit_code -eq 2 ]]; then
-            _add_user_status_to_array existing_users "$username" "skipped" "User already exists"
-        else
-            # The reason is logged by _add_single_user, so we just capture the failure.
-            _add_user_status_to_array failed_users "$username" "failed" "Failed during user creation."
+    local line_number=0
+    local success_count=0
+    local failure_count=0
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        ((line_number++))
+
+        # Skip empty lines and comments
+        if [[ -z "$line" || "$line" =~ ^# ]]; then
+            continue
         fi
-    done < <(jq -c '.users[]')
 
-    # Display results
-    _display_add_users_bash_results "${created_users[@]}" "${existing_users[@]}" "${failed_users[@]}"
+        local username
+        local primary_group
+        local secondary_groups
+        local shell
+        local comment
+
+        case "$format" in
+            "tsv")
+                IFS=$'\t' read -r username primary_group secondary_groups shell comment <<< "$line"
+                ;;
+            "csv")
+                IFS=',' read -r username primary_group secondary_groups shell comment <<< "$line"
+                ;;
+            "json")
+                log_error "JSON batch processing is not yet implemented."
+                ((failure_count++))
+                continue
+                ;;
+            *)
+                log_error "Unsupported batch format: '$format' on line $line_number."
+                ((failure_count++))
+                continue
+                ;;
+        esac
+
+        # Construct arguments for _add_single_user
+        local args=()
+        [ -n "$primary_group" ] && args+=(--group "$primary_group")
+        [ -n "$secondary_groups" ] && args+=(--groups "$secondary_groups")
+        [ -n "$shell" ] && args+=(--shell "$shell")
+        [ -n "$comment" ] && args+=(--comment "$comment")
+
+        if _add_single_user "$username" "${args[@]}"; then
+            ((success_count++))
+            _add_user_status_to_array "$username" "SUCCESS" "User created."
+        else
+            ((failure_count++))
+            _add_user_status_to_array "$username" "FAILURE" "Failed to create user (see log for details)."
+        fi
+
+    done < "$file_path"
+
+    log_info "Batch processing complete. Success: $success_count, Failure: $failure_count"
+    print_batch_summary
+
+    if [ $failure_count -gt 0 ]; then
+        return $SOFT_FAILURE
+    else
+        return $SUCCESS
+    fi
 }
 
 # ------------------------------------------------------------------------------

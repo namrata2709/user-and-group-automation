@@ -66,7 +66,7 @@ done
 find "$LIB_DIR" -maxdepth 1 -type f -name "*.sh" | while read -r library_file; do
     source "$library_file"
 done
-source "install.sh"
+source "./install.sh"
 # Load configuration file
 if [ -f "$CONFIG_FILE" ]; then
     source "$CONFIG_DIR/user_mgmt.conf"

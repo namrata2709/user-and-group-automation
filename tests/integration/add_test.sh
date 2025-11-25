@@ -16,8 +16,7 @@ source "$SCRIPTS_DIR/lib/utils/logging.sh" # Source any other direct dependencie
 # --- Test Suite Setup & Teardown ---
 setup() {
     # This function is called before each test.
-    # Create dummy files or users needed for tests.
-    # Example: Create a dummy user to test duplicate detection.
+    # Create a dummy user to test duplicate detection.
     if ! id "existinguser" &>/dev/null; then
         useradd "existinguser"
     fi
@@ -59,7 +58,6 @@ test_add_single_user_with_home_and_skel() {
 
     # Assertions
     assert_string_contains "$output" "User 'testuser2' created successfully"
-    # A helper function could be added to test_helper.sh for this
     if [ ! -f "/tmp/home/testuser2/test_file" ]; then
         echo "Assertion failed: File /tmp/home/testuser2/test_file does not exist."
         return 1

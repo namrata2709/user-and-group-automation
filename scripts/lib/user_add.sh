@@ -10,7 +10,7 @@
 #                JSON files, and a provisioning mode to create both groups and
 #                users from a single JSON file. It is designed to be sourced by
 #                other scripts, providing a robust and structured way to manage
-#                user creation.
+                user creation.
 #
 #       OPTIONS: ---
 #  REQUIREMENTS: bash, coreutils, jq, getent
@@ -19,11 +19,20 @@
 #       AUTHOR: Your Name, your.email@example.com
 # ORGANIZATION: Your Company
 #      CREATED: YYYY-MM-DD
-#     REVISION: 1.1.0
+#     REVISION: 1.2.0
 #
 # ==============================================================================
 
-# ==============================================================================\n# SECTION: PRIVATE HELPER FUNCTIONS\n# ==============================================================================
+# ==============================================================================
+# SECTION: CONSTANTS
+# ==============================================================================
+readonly SUCCESS=0
+readonly HARD_FAILURE=1
+readonly SOFT_FAILURE=2
+
+# ==============================================================================
+# SECTION: PRIVATE HELPER FUNCTIONS
+# ==============================================================================
 
 # ------------------------------------------------------------------------------
 # FUNCTION: _add_user_status_to_array()
@@ -154,7 +163,8 @@ _parse_users_from_text() {
 # CORE FUNCTIONS
 # =================================================================================================
 
-# ------------------------------------------------------------------------------# FUNCTION: _add_single_user()
+# ------------------------------------------------------------------------------
+# FUNCTION: _add_single_user()
 #
 # DESCRIPTION:
 #   Creates a single user on the system after validating the username and
@@ -174,31 +184,31 @@ _parse_users_from_text() {
 #                   any actual changes to the system.
 #
 # RETURNS:
-#   0: On success or if in dry-run mode.
-#   1: On hard failure (e.g., invalid input, `useradd` command fails).
-#   2: On soft failure (e.g., the user already exists).
+#   SUCCESS (0): On success or if in dry-run mode.
+#   HARD_FAILURE (1): On hard failure (e.g., invalid input, `useradd` command fails).
+#   SOFT_FAILURE (2): On soft failure (e.g., the user already exists).
 # ------------------------------------------------------------------------------
 _add_single_user() {
     local username=$1
     local primary_group=$2
     local secondary_groups=$3
-    local shell_access=${4:-"/bin/bash"}
+    local shell=${4:-"/bin/bash"}
 
     # Validate username
     if ! validate_name "$username" "user"; then
         echo "Invalid username format"
         log_action "ERROR" "User creation failed: '$username' is not a valid username."
-        return 1
+        return $HARD_FAILURE
     fi
 
     # Check if user already exists
     if id "$username" &>/dev/null; then
         log_action "INFO" "User '$username' already exists. Skipping."
-        return 2
+        return $SOFT_FAILURE
     fi
 
     # Build useradd command arguments
-    local useradd_args=(-m -s "$shell_access")
+    local useradd_args=(-m -s "$shell")
     if [[ -n "$primary_group" ]]; then
         useradd_args+=(-g "$primary_group")
     else
@@ -212,17 +222,17 @@ _add_single_user() {
     # Execute or dry-run
     if [[ "$DRY_RUN" == "true" ]]; then
         log_action "DRY-RUN" "Would execute: useradd ${useradd_args[*]}"
-        return 0
+        return $SUCCESS
     else
         log_action "INFO" "Creating user '$username' with command: useradd ${useradd_args[*]}"
         if useradd "${useradd_args[@]}"; then
             log_action "SUCCESS" "User '$username' created successfully."
-            return 0
+            return $SUCCESS
         else
             local error_msg="Failed to create user '$username'."
             log_action "ERROR" "$error_msg"
             echo "$error_msg"
-            return 1
+            return $HARD_FAILURE
         fi
     fi
 }
@@ -231,11 +241,12 @@ _add_single_user() {
 # FUNCTION: _add_users_core()
 #
 # DESCRIPTION:
-#   Processes a list of users from a JSON input stream, creating them one by
-#   one. This function serves as the unified core for all batch user creation.
+#   Processes a list of users from a JSON input stream (passed as an argument),
+#   creating them one by one. This function serves as the unified core for all
+#   batch user creation.
 #
 # ARGUMENTS:
-#   None. It reads JSON from stdin.
+#   $1: A JSON string containing an array of user objects.
 #
 # GLOBALS:
 #   DRY_RUN (read): Passed to the core creation function.

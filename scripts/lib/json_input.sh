@@ -1,128 +1,128 @@
-#!/usr/bin/env bash
-# ================================================
-# JSON Input Processing Module - REFACTORED
-# Version: 2.1.0
-# ================================================
-# This file now only contains role-based and user deletion functions.
-# Group management is handled in group_add.sh and group_delete.sh
-# ================================================
+# #!/usr/bin/env bash
+# # ================================================
+# # JSON Input Processing Module - REFACTORED
+# # Version: 2.1.0
+# # ================================================
+# # This file now only contains role-based and user deletion functions.
+# # Group management is handled in group_add.sh and group_delete.sh
+# # ================================================
 
-# ============================================
-# apply_roles_from_json()
-# ============================================
-# Applies role-based configurations from JSON
-# Args:
-#   $1 - JSON file path
-# Returns:
-#   Summary of operations
-apply_roles_from_json() {
-    local json_file="$1"
+# # ============================================
+# # apply_roles_from_json()
+# # ============================================
+# # Applies role-based configurations from JSON
+# # Args:
+# #   $1 - JSON file path
+# # Returns:
+# #   Summary of operations
+# apply_roles_from_json() {
+#     local json_file="$1"
     
-    if [ ! -f "$json_file" ]; then
-        echo "${ICON_ERROR} JSON file not found: $json_file"
-        return 1
-    fi
+#     if [ ! -f "$json_file" ]; then
+#         echo "${ICON_ERROR} JSON file not found: $json_file"
+#         return 1
+#     fi
     
-    if ! command -v jq &> /dev/null; then
-        echo "${ICON_ERROR} jq required. Install with: sudo apt install jq"
-        return 1
-    fi
+#     if ! command -v jq &> /dev/null; then
+#         echo "${ICON_ERROR} jq required. Install with: sudo apt install jq"
+#         return 1
+#     fi
     
-    # Validate JSON syntax
-    if ! jq empty "$json_file" 2>/dev/null; then
-        echo "${ICON_ERROR} Invalid JSON format: $json_file"
-        return 1
-    fi
+#     # Validate JSON syntax
+#     if ! jq empty "$json_file" 2>/dev/null; then
+#         echo "${ICON_ERROR} Invalid JSON format: $json_file"
+#         return 1
+#     fi
     
-    # Validate JSON structure
-    if ! jq -e '.roles' "$json_file" >/dev/null 2>&1; then
-        echo "${ICON_ERROR} Invalid JSON structure - missing 'roles' object"
-        return 1
-    fi
+#     # Validate JSON structure
+#     if ! jq -e '.roles' "$json_file" >/dev/null 2>&1; then
+#         echo "${ICON_ERROR} Invalid JSON structure - missing 'roles' object"
+#         return 1
+#     fi
     
-    if ! jq -e '.assignments' "$json_file" >/dev/null 2>&1; then
-        echo "${ICON_ERROR} Invalid JSON structure - missing 'assignments' array"
-        return 1
-    fi
+#     if ! jq -e '.assignments' "$json_file" >/dev/null 2>&1; then
+#         echo "${ICON_ERROR} Invalid JSON structure - missing 'assignments' array"
+#         return 1
+#     fi
     
-    echo "============================================"
-    echo "Applying Roles from: $json_file"
-    [ "$DRY_RUN" = true ] && echo "${ICON_SEARCH} DRY-RUN MODE"
-    echo "============================================"
-    echo ""
+#     echo "============================================"
+#     echo "Applying Roles from: $json_file"
+#     [ "$DRY_RUN" = true ] && echo "${ICON_SEARCH} DRY-RUN MODE"
+#     echo "============================================"
+#     echo ""
     
-    local success_count=0
-    local failed_count=0
-    local start_time=$(date +%s)
+#     local success_count=0
+#     local failed_count=0
+#     local start_time=$(date +%s)
     
-    # Parse each assignment
-    while IFS= read -r assignment; do
-        local username=$(echo "$assignment" | jq -r '.username')
-        local role=$(echo "$assignment" | jq -r '.role')
+#     # Parse each assignment
+#     while IFS= read -r assignment; do
+#         local username=$(echo "$assignment" | jq -r '.username')
+#         local role=$(echo "$assignment" | jq -r '.role')
         
-        echo "Processing: $username (role: $role)"
+#         echo "Processing: $username (role: $role)"
         
-        # Get role definition
-        local role_def=$(jq -c ".roles.\\\"$role\\\"" "$json_file" 2>/dev/null)
+#         # Get role definition
+#         local role_def=$(jq -c ".roles.\\\"$role\\\"" "$json_file" 2>/dev/null)
         
-        if [ "$role_def" = "null" ] || [ -z "$role_def" ]; then
-            echo "  ${ICON_ERROR} Role '$role' not found in JSON"
-            ((failed_count++))
-            echo ""
-            continue
-        fi
+#         if [ "$role_def" = "null" ] || [ -z "$role_def" ]; then
+#             echo "  ${ICON_ERROR} Role '$role' not found in JSON"
+#             ((failed_count++))
+#             echo ""
+#             continue
+#         fi
         
-        # Extract role settings
-        local groups=$(echo "$role_def" | jq -r '.groups[]?' 2>/dev/null | paste -sd,)
-        local shell=$(echo "$role_def" | jq -r '.shell // "/bin/bash"')
-        local pwd_expiry=$(echo "$role_def" | jq -r '.password_expiry_days // 90')
-        local description=$(echo "$role_def" | jq -r '.description // ""')
+#         # Extract role settings
+#         local groups=$(echo "$role_def" | jq -r '.groups[]?' 2>/dev/null | paste -sd,)
+#         local shell=$(echo "$role_def" | jq -r '.shell // "/bin/bash"')
+#         local pwd_expiry=$(echo "$role_def" | jq -r '.password_expiry_days // 90')
+#         local description=$(echo "$role_def" | jq -r '.description // ""')
         
-        echo "  Role: $role"
-        [ -n "$description" ] && echo "  Description: $description"
-        echo "  Shell: $shell"
-        echo "  Groups: ${groups:-(none)}"
-        echo "  Password expiry: $pwd_expiry days"
-        echo ""
+#         echo "  Role: $role"
+#         [ -n "$description" ] && echo "  Description: $description"
+#         echo "  Shell: $shell"
+#         echo "  Groups: ${groups:-(none)}"
+#         echo "  Password expiry: $pwd_expiry days"
+#         echo ""
         
-        # Check if user exists
-        if id "$username" &>/dev/null; then
-            echo "  ${ICON_INFO} User exists, updating..."
+#         # Check if user exists
+#         if id "$username" &>/dev/null; then
+#             echo "  ${ICON_INFO} User exists, updating..."
             
-            if [ "$DRY_RUN" = true ]; then
-                echo "  ${ICON_SEARCH} [DRY-RUN] Would update $username with role settings"
-                ((success_count++))
-            else
-                # Update existing user
-                [ -n "$groups" ] && sudo usermod -aG "$groups" "$username" 2>/dev/null
-                sudo chage -M "$pwd_expiry" "$username"
-                sudo usermod -s "$shell" "$username" 2>/dev/null
+#             if [ "$DRY_RUN" = true ]; then
+#                 echo "  ${ICON_SEARCH} [DRY-RUN] Would update $username with role settings"
+#                 ((success_count++))
+#             else
+#                 # Update existing user
+#                 [ -n "$groups" ] && sudo usermod -aG "$groups" "$username" 2>/dev/null
+#                 sudo chage -M "$pwd_expiry" "$username"
+#                 sudo usermod -s "$shell" "$username" 2>/dev/null
                 
-                echo "  ${ICON_SUCCESS} User updated with role settings"
-                log_action "apply_role" "$username" "SUCCESS" "Role: $role, Groups: $groups"
-                ((success_count++))
-            fi
-        else
-            echo "  ${ICON_INFO} User doesn't exist, creating..."
+#                 echo "  ${ICON_SUCCESS} User updated with role settings"
+#                 log_action "apply_role" "$username" "SUCCESS" "Role: $role, Groups: $groups"
+#                 ((success_count++))
+#             fi
+#         else
+#             echo "  ${ICON_INFO} User doesn't exist, creating..."
             
-            # UPDATED: Use core function from user_add.sh
-            if add_single_user "$username" "$description" "0" "$shell" "no" "random" "$pwd_expiry" "$groups"; then
-                ((success_count++))
-            else
-                ((failed_count++))
-            fi
-        fi
+#             # UPDATED: Use core function from user_add.sh
+#             if add_single_user "$username" "$description" "0" "$shell" "no" "random" "$pwd_expiry" "$groups"; then
+#                 ((success_count++))
+#             else
+#                 ((failed_count++))
+#             fi
+#         fi
         
-        echo ""
-    done < <(jq -c '.assignments[]' "$json_file" 2>/dev/null)
+#         echo ""
+#     done < <(jq -c '.assignments[]' "$json_file" 2>/dev/null)
     
-    local end_time=$(date +%s)
-    local duration=$((end_time - start_time))
+#     local end_time=$(date +%s)
+#     local duration=$((end_time - start_time))
     
-    print_operation_summary "$((success_count + failed_count))" "Applied" "$success_count" "0" "$failed_count" "$duration"
+#     print_operation_summary "$((success_count + failed_count))" "Applied" "$success_count" "0" "$failed_count" "$duration"
     
-    return 0
-}
+#     return 0
+# }
 
 # ============================================
 # delete_users_from_json()

@@ -1,16 +1,19 @@
 # User and Group Automation
 
-A comprehensive command-line tool for managing user and group accounts on EC2 instances. It simplifies standard administrative tasks, supports bulk operations, and provides powerful reporting and querying capabilities.
+A comprehensive command-line tool for managing local user and group accounts on Linux systems. It simplifies standard administrative tasks, supports bulk operations with robust error handling, and provides powerful reporting and querying capabilities.
+
+The script is designed with a modular architecture, separating core logic from utility functions, and includes a comprehensive test suite to ensure reliability.
 
 ## Features
 
 *   **User Management**: Add, update, delete, lock, and unlock users.
 *   **Group Management**: Add, update, and delete groups.
 *   **Bulk Operations**: Perform actions on multiple users or groups at once using text or JSON files.
-*   **Role-Based Provisioning**: Standardize user configurations using roles.
-*   **Reporting**: Generate reports on user activity, security, and compliance.
-*   **Querying**: Filter and view users and groups based on various criteria.
-*   **Dry Run Mode**: Simulate operations without making any actual changes.
+*   **Reporting**: Generate detailed reports on user and group configurations.
+*   **Querying**: View and filter users and groups based on various criteria.
+*   **Dry Run Mode**: Simulate operations without making any actual changes to the system.
+*   **Configuration File**: Customize default behaviors like password policies and logging.
+*   **Extensive Testing**: A full suite of unit and integration tests to ensure code quality.
 
 ## Installation
 
@@ -18,7 +21,7 @@ A comprehensive command-line tool for managing user and group accounts on EC2 in
     ```bash
     git clone <repository-url>
     ```
-2.  Run the installer script:
+2.  Run the installer script, which sets up the main `user` command:
     ```bash
     cd user-and-group-automation
     sudo ./scripts/install.sh
@@ -26,61 +29,65 @@ A comprehensive command-line tool for managing user and group accounts on EC2 in
 
 ## Usage
 
-The main script is `user.sh`. It is located in the `scripts` directory.
+The main script is `user.sh`, which is typically symlinked to `/usr/local/bin/user` by the installer.
 
 ```bash
-sudo ./scripts/user.sh [OPERATION] [OPTIONS]
+sudo user [COMMAND] [SUBCOMMAND] [OPTIONS]
 ```
 
-### Operations
+### Commands
 
-*   `--add`: Add users or groups.
-*   `--update`: Update existing users or groups.
-*   `--delete`: Delete users or groups.
-*   `--lock`: Lock a user account.
-*   `--unlock`: Unlock a user account.
-*   `--view`: View users, groups, or system details.
-*   `--report`: Generate security, activity, and compliance reports.
-*   `--export`: Export user and group data to CSV or JSON.
-*   `--apply-roles`: Provision users and apply configurations from a role file.
-*   `--compliance`: Run system compliance and security checks.
-*   `--help [topic]`: Show the general help message or help for a specific topic.
+*   `add user|group`: Add users or groups.
+*   `update user|group`: Update existing users or groups.
+*   `delete user|group`: Delete users or groups.
+*   `lock user`: Lock a user account.
+*   `unlock user`: Unlock a user account.
+*   `view users|groups`: View users, groups, or system details.
+*   `report`: Generate security, activity, and compliance reports.
+*   `export`: Export user and group data to CSV or JSON.
+*   `help [topic]`: Show the general help message or help for a specific topic.
 
 ### Common Options
 
 *   `--dry-run`: Simulate an operation without making system changes.
 *   `--config <path>`: Specify a custom configuration file.
-*   `--log-level <level>`: Set the logging level (e.g., `info`, `debug`, `error`).
-*   `--json`: Output results in JSON format (for `--view`, `--report`).
+*   `--log-file <path>`: Specify a custom log file.
+*   `--json`: Output results in JSON format (for `view`, `report`).
 
 ### Examples
 
 #### Add a Single User
 
 ```bash
-sudo ./scripts/user.sh --add user --name alice --password random
+sudo user add user --username alice --password random
 ```
 
-#### Add Multiple Users from a File
+#### Add Multiple Groups from a File
 
-Create a file named `users.txt` with one username per line:
-bob 
-charlie
+Create a file named `groups.txt` with one group name per line:
+developers
+testers
 
 
 Then run the command:
 ```bash
-sudo ./scripts/user.sh --add user --file users.txt
+sudo user add group --file groups.txt
 ```
 
-You can also use a JSON file for more complex user creation:
-```json:users.json
+#### Add Users and Groups from a JSON File
+
+Use a JSON file for more complex, transactional provisioning:
+```json:provision.json
 {
+  "groups": [
+    {"name": "devops", "gid": "5001"},
+    {"name": "cloud", "gid": "5002"}
+  ],
   "users": [
     {
       "username": "dave",
-      "comment": "Dave, The Intern",
-      "groups": ["interns", "docker"],
+      "primary_group": "devops",
+      "secondary_groups": "cloud,docker",
       "shell": "/bin/bash"
     }
   ]
@@ -88,22 +95,19 @@ You can also use a JSON file for more complex user creation:
 ```
 
 ```bash
-sudo ./scripts/user.sh --add user --file users.json
+sudo user add --file provision.json
 ```
 
 #### View Users
 
 ```bash
 # View all users
-sudo ./scripts/user.sh --view users
+sudo user view users
 
-# View a specific user
-sudo ./scripts/user.sh --view user alice
-
-# View users with a home directory larger than 1GB
-sudo ./scripts/user.sh --view users --where "home_size > '1GB'"
+# View a specific user in JSON format
+sudo user view user alice --json
 ```
 
 ## Testing
 
-The test suite is located in the `tests` directory. To run the tests, see the instructions in `tests/README.md`.
+The project includes a comprehensive test suite located in the `tests` directory. The suite is divided into unit and integration tests. For detailed instructions on running the tests, see the `tests/README.md` file.

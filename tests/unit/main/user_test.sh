@@ -1,26 +1,21 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
-# Load test helpers
-source "$(dirname "$0")/../../../test_helpers.sh"
+# Exit immediately if a command exits with a non-zero status.
+set -e
 
-# Load the script to be tested
-source "$(dirname "$0")/../../../../scripts/user.sh"
+# Define the directories
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
+LIB_DIR="$SCRIPT_DIR/../../../scripts/lib"
+UTILS_DIR="$LIB_DIR/utils"
+TEST_HELPERS_PATH="$SCRIPT_DIR/../../helpers_test.sh"
 
-# =============================================================================
-# MOCKS & STUBS
-# =============================================================================
-
-# Mock the library functions that would be called by the main script
-add_users() { echo "add_users_called: $*"; }
-delete_users() { echo "delete_users_called: $*"; }
-update_users() { echo "update_users_called: $*"; }
-view_users() { echo "view_users_called: $*"; }
-lock_users() { echo "lock_users_called: $*"; }
-add_groups() { echo "add_groups_called: $*"; }
-delete_groups() { echo "delete_groups_called: $*"; }
-update_groups() { echo "update_groups_called: $*"; }
-show_help() { echo "show_help_called: $*"; }
-
+# Source the necessary files using absolute paths
+source "$TEST_HELPERS_PATH"
+source "$UTILS_DIR/validation.sh"
+source "$UTILS_DIR/logging.sh"
+source "$UTILS_DIR/output.sh"
+source "$LIB_DIR/group_add.sh"
+source "$LIB_DIR/user_add.sh"
 # =============================================================================
 # TEST CASES
 # =============================================================================

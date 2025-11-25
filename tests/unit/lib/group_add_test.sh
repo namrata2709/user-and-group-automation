@@ -10,10 +10,15 @@
 # =============================================================================
 
 # --- Test Setup ---
-source "$(dirname "$0")/../../../test_helpers.sh"
-source "$(dirname "$0")/../../../../scripts/lib/utils/validation.sh"
-source "$(dirname "$0")/../../../../scripts/lib/utils/output.sh"
-source "$(dirname "$0")/../../../../scripts/lib/group_add.sh"
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
+LIB_DIR="$SCRIPT_DIR/../../../scripts/lib"
+UTILS_DIR="$LIB_DIR/utils"
+TEST_HELPERS_PATH="$SCRIPT_DIR/../../helpers_test.sh"
+
+source "$TEST_HELPERS_PATH"
+source "$UTILS_DIR/validation.sh"
+source "$UTILS_DIR/output.sh"
+source "$LIB_DIR/group_add.sh"
 
 # --- Mocks & Stubs ---
 _display_banner() { :; }

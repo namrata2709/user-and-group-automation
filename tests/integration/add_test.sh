@@ -1,9 +1,18 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
-# Source the function to be tested
-source ../../../../scripts/lib/utils/logging.sh
-# Source the test helpers
-source ../../../../test_helpers.sh
+# Define directories and source dependencies
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
+SCRIPTS_DIR="$SCRIPT_DIR/../../scripts"
+LIB_DIR="$SCRIPTS_DIR/lib"
+UTILS_DIR="$LIB_DIR/utils"
+TEST_HELPERS_PATH="$SCRIPT_DIR/../helpers_test.sh"
+USER_SCRIPT_PATH="$SCRIPTS_DIR/user.sh"
+
+source "$UTILS_DIR/logging.sh"
+source "$TEST_HELPERS_PATH"
+
+# --- Test Suite ---
+
 
 # Mock the 'date' command to return a fixed timestamp
 date() {

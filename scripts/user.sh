@@ -55,7 +55,10 @@ BUILD_DATE="2024-07-29"
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 LIB_DIR="$SCRIPT_DIR/lib"
 LOG_DIR="$SCRIPT_DIR/log"
-CONFIG_DIR="$SCRIPT_DIR/config"
+# The config directory is at the project root, which is one level above the scripts directory.
+CONFIG_DIR="$SCRIPT_DIR/../config"
+
+
 
 # --- Configuration Loading ---
 # Loads the main configuration file. Exits if not found.

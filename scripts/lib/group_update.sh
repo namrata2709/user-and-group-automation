@@ -1,119 +1,143 @@
-# =============================================================================
-# PUBLIC: update_group
-# =============================================================================
-update_group() {
+#!/usr/bin/env bash
+# ================================================
+# Group Update Module
+# Version: 1.0.1
+# ================================================
+
+update_group_add_members() {
     local groupname="$1"
-    shift
-
-    if ! group_exists "$groupname"; then
-        error_message "Group '$groupname' does not exist. Cannot perform update."
+    local members="$2"
+    
+    if ! getent group "$groupname" >/dev/null 2>&1; then
+        echo "${ICON_ERROR} Group '$groupname' does not exist"
         return 1
     fi
-
-    display_banner "Updating Group: $groupname"
-
-    while [[ "$#" -gt 0 ]]; do
-        case "$1" in
-            --add-members) _update_group_add_members "$groupname" "$2"; shift 2 ;;
-            --remove-members) _update_group_remove_members "$groupname" "$2"; shift 2 ;;
-            --new-name) _update_group_rename "$groupname" "$2"; groupname="$2"; shift 2 ;;
-            *) error_message "Unknown update option: $1"; return 1 ;;
-        esac
-    done
-
-    success_message "All updates for '$groupname' processed."
-}
-
-# =============================================================================
-# PUBLIC: parse_groups_for_update_from_json
-# =============================================================================
-parse_groups_for_update_from_json() {
-    local json_file="$1"
-
-    if ! command_exists "jq"; then
-        error_message "jq is not installed. Please install it to process JSON files."
-        return 1
-    fi
-
-    if ! validate_json_file "$json_file" "groups"; then
-        return 1
-    fi
-
-    local count=0 updated=0 skipped=0 failed=0
-    local start_time=$(date +%s)
-
-    while IFS= read -r group_json; do
-        ((count++))
-        local groupname=$(echo "$group_json" | jq -r '.groupname')
-        local action=$(echo "$group_json" | jq -r '.action // "update"')
-
-        if [[ "$action" != "update" ]]; then
-            info_message "Skipping group '$groupname' - action is '$action' (not 'update')."
-            ((skipped++))
-            continue
-        fi
-
-        if ! group_exists "$groupname"; then
-            error_message "Group '$groupname' does not exist. Skipping."
+    
+    echo "Adding members to group: $groupname"
+    echo "Members: $members"
+    echo ""
+    
+    local success=0
+    local failed=0
+    
+    IFS=',' read -ra MEMBER_ARRAY <<< "$members"
+    for member in "${MEMBER_ARRAY[@]}"; do
+        member=$(echo "$member" | xargs)
+        
+        if ! id "$member" &>/dev/null; then
+            echo "  ${ICON_ERROR} User '$member' does not exist"
             ((failed++))
             continue
         fi
-
-        local updates=()
-        while IFS='=' read -r key value; do
-            case "$key" in
-                add-members|remove-members|new-name)
-                    updates+=("--$key" "$value")
-                    ;;
-            esac
-        done < <(echo "$group_json" | jq -r '.updates | to_entries | .[] | "\(.key)=\(.value)"')
-
-        if [[ ${#updates[@]} -gt 0 ]]; then
-            if update_group "$groupname" "${updates[@]}"; then
-                ((updated++))
-            else
-                ((failed++))
-            fi
-        else
-            info_message "No valid updates specified for group '$groupname'. Skipping."
-            ((skipped++))
+        
+        if getent group "$groupname" | cut -d: -f4 | grep -qw "$member"; then
+            echo "  ${ICON_WARNING} Already member: $member"
+            continue
         fi
+        
+        if sudo usermod -aG "$groupname" "$member"; then
+            echo "  ${ICON_SUCCESS} Added: $member"
+            ((success++))
+        else
+            echo "  ${ICON_ERROR} Failed to add: $member"
+            ((failed++))
+        fi
+    done
+    
+    echo ""
+    echo "Summary: $success added, $failed failed"
+    
+    if [ $success -gt 0 ]; then
         echo ""
-    done < <(jq -c '.groups[]' "$json_file")
-
-    local end_time=$(date +%s)
-    local duration=$((end_time - start_time))
-
-    print_operation_summary "$count" "Updated" "$updated" "$skipped" "$failed" "$duration"
+        echo "Current members:"
+        getent group "$groupname" | cut -d: -f4
+    fi
+    
+    log_action "update_group_add_members" "$groupname" "SUCCESS" "Added: $members"
 }
 
-# =============================================================================
-# PUBLIC: update_groups_from_file
-# =============================================================================
-update_groups_from_file() {
-    local input_file="$1"
-    local format="${2:-auto}"
-
-    if [[ ! -f "$input_file" ]]; then
-        error_message "Input file not found: $input_file"
+update_group_remove_members() {
+    local groupname="$1"
+    local members="$2"
+    
+    if ! getent group "$groupname" >/dev/null 2>&1; then
+        echo "${ICON_ERROR} Group '$groupname' does not exist"
         return 1
     fi
-
-    if [[ "$format" = "auto" ]]; then
-        format="${input_file##*.}"
-    fi
-
-    display_banner "Bulk Group Update"
-    info_message "File:    $input_file"
-    info_message "Format:  $format"
+    
+    local gid=$(get_group_gid "$groupname")
+    
+    echo "Removing members from group: $groupname"
+    echo "Members: $members"
     echo ""
+    
+    local success=0
+    local failed=0
+    
+    IFS=',' read -ra MEMBER_ARRAY <<< "$members"
+    for member in "${MEMBER_ARRAY[@]}"; do
+        member=$(echo "$member" | xargs)
+        
+        if ! id "$member" &>/dev/null; then
+            echo "  ${ICON_WARNING} User '$member' does not exist"
+            continue
+        fi
+        
+        local primary_gid=$(id -g "$member")
+        if [ "$primary_gid" = "$gid" ]; then
+            echo "  ${ICON_WARNING} Cannot remove: $member (primary group)"
+            ((failed++))
+            continue
+        fi
+        
+        if ! getent group "$groupname" | cut -d: -f4 | grep -qw "$member"; then
+            echo "  ${ICON_WARNING} Not a member: $member"
+            continue
+        fi
+        
+        if sudo gpasswd -d "$member" "$groupname" &>/dev/null; then
+            echo "  ${ICON_SUCCESS} Removed: $member"
+            ((success++))
+        else
+            echo "  ${ICON_ERROR} Failed to remove: $member"
+            ((failed++))
+        fi
+    done
+    
+    echo ""
+    echo "Summary: $success removed, $failed failed"
+    
+    if [ $success -gt 0 ]; then
+        echo ""
+        echo "Current members:"
+        local current_members=$(getent group "$groupname" | cut -d: -f4)
+        echo "${current_members:-(none)}"
+    fi
+    
+    log_action "update_group_remove_members" "$groupname" "SUCCESS" "Removed: $members"
+}
 
-    case "$format" in
-        json)
-            parse_groups_for_update_from_json "$input_file"
+update_group() {
+    local groupname="$1"
+    local operation="$2"
+    shift 2
+    local value="$*"
+    
+    if ! getent group "$groupname" >/dev/null 2>&1; then
+        echo "${ICON_ERROR} Group '$groupname' does not exist"
+        return 1
+    fi
+    
+    case "$operation" in
+        add-member|add-members)
+            update_group_add_members "$groupname" "$value"
+            ;;
+        remove-member|remove-members)
+            update_group_remove_members "$groupname" "$value"
             ;;
         *)
-            error_message "Unsupported format for bulk update: '$format'. Only 'json' is supported."
+            echo "${ICON_ERROR} Unknown update operation: $operation"
+            echo "Use: add-member, add-members, remove-member, remove-members"
             return 1
             ;;
     esac

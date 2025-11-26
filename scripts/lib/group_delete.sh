@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # ================================================
-# Group Delete Module - REFACTORED
-# Version: 2.0.0
+# Group Delete Module
+# Version: 1.0.1
 # ================================================
 
 delete_check_group() {
     local groupname="$1"
     
-    echo "============================================"
+    echo "=========================================="
     echo "Pre-Deletion Check: $groupname"
-    echo "============================================"
+    echo "=========================================="
     echo ""
     
     if ! getent group "$groupname" >/dev/null 2>&1; then
@@ -90,7 +90,7 @@ delete_check_group() {
     fi
     echo ""
     
-    echo "============================================"
+    echo "=========================================="
     if is_system_group "$groupname"; then
         echo "${ICON_ERROR} CANNOT DELETE: System group (GID < 1000)"
     elif [ $warnings -gt 0 ]; then
@@ -98,7 +98,7 @@ delete_check_group() {
     else
         echo "${ICON_SUCCESS} Safe to delete (no warnings)"
     fi
-    echo "============================================"
+    echo "=========================================="
     
     log_action "delete_check_group" "$groupname" "COMPLETE" "$warnings warnings"
 }
@@ -134,9 +134,9 @@ create_group_backup() {
 delete_group_interactive() {
     local groupname="$1"
     
-    echo "============================================"
+    echo "=========================================="
     echo "Interactive Group Deletion: $groupname"
-    echo "============================================"
+    echo "=========================================="
     echo ""
     
     if is_system_group "$groupname"; then
@@ -204,10 +204,6 @@ delete_group_auto() {
     if sudo groupdel "$groupname" 2>/dev/null; then
         echo "${ICON_SUCCESS} Group deleted"
         log_action "delete_group_auto" "$groupname" "SUCCESS" ""
-        return 0
-    else
-        log_action "delete_group_auto" "$groupname" "FAILED" "groupdel command failed"
-        return 1
     fi
 }
 
@@ -266,111 +262,51 @@ delete_group() {
     esac
 }
 
-# ============================================
-# PARSER: JSON Format for Deletion
-# ============================================
-parse_groups_for_deletion_from_json() {
-    local json_file="$1"
-
-    if ! command -v jq &> /dev/null; then
-        echo "${ICON_ERROR} jq not installed. Install with: sudo apt install jq"
-        return 1
-    fi
-
-    if ! jq empty "$json_file" 2>/dev/null; then
-        echo "${ICON_ERROR} Invalid JSON format: $json_file"
-        return 1
-    fi
-
-    if ! jq -e '.groups' "$json_file" >/dev/null 2>&1; then
-        echo "${ICON_ERROR} Invalid JSON structure - missing 'groups' array"
-        return 1
-    fi
-
-    local count=0 deleted=0 skipped=0 failed=0
-    local start_time=$(date +%s)
-
-    while IFS= read -r group_json; do
-        ((count++))
-        
-        local groupname=$(echo "$group_json" | jq -r '.name')
-        local action=$(echo "$group_json" | jq -r '.action // "delete"')
-
-        if [ "$action" != "delete" ]; then
-            echo "${ICON_WARNING} Skipping group '$groupname' - action is '$action' (not 'delete')"
-            ((skipped++))
-            continue
-        fi
-
-        if delete_group_auto "$groupname"; then
-            ((deleted++))
-        else
-            if ! getent group "$groupname" >/dev/null 2>&1; then
-                ((skipped++))
-            else
-                ((failed++))
-            fi
-        fi
-        echo ""
-    done < <(jq -c '.groups[]' "$json_file" 2>/dev/null)
-
-    local end_time=$(date +%s)
-    local duration=$((end_time - start_time))
-
-    print_operation_summary "$count" "Deleted" "$deleted" "$skipped" "$failed" "$duration"
-
-    return 0
-}
-
 delete_groups() {
     local group_file="$1"
-    local format="${2:-auto}"
-
+    
     if [[ ! -f "$group_file" ]]; then
         echo "${ICON_ERROR} Group file not found: $group_file"
-        return 1
+        exit 1
     fi
-
-    if [ "$format" = "auto" ]; then
-        if [[ "$group_file" =~ \.json$ ]]; then
-            format="json"
-        else
-            format="text"
+    
+    echo "${ICON_WARNING} Batch Group Deletion"
+    
+    local count=0 deleted=0 skipped=0
+    
+    while IFS= read -r line || [ -n "$line" ]; do
+        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+        line=$(echo "$line" | sed 's/#.*$//' | xargs)
+        [ -z "$line" ] && continue
+        
+        local groupname="$line"
+        count=$((count + 1))
+        
+        if ! getent group "$groupname" >/dev/null 2>&1; then
+            skipped=$((skipped + 1))
+            continue
         fi
-    fi
-
-    print_delete_group_banner "$group_file" "$format"
-
-    case "$format" in
-        json)
-            parse_groups_for_deletion_from_json "$group_file"
-            ;;
-        text|txt)
-            local count=0 deleted=0 skipped=0 failed=0
-            while IFS= read -r line || [ -n "$line" ]; do
-                [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
-                line=$(echo "$line" | sed 's/#.*$//' | xargs)
-                [ -z "$line" ] && continue
-                
-                local groupname="$line"
-                ((count++))
-                
-                if delete_group_auto "$groupname"; then
-                    ((deleted++))
-                else
-                    if ! getent group "$groupname" >/dev/null 2>&1; then
-                        ((skipped++))
-                    else
-                        ((failed++))
-                    fi
-                fi
-            done < "$group_file"
-            print_operation_summary "$count" "Deleted" "$deleted" "$skipped" "$failed"
-            ;;
-        *)
-            echo "${ICON_ERROR} Unknown format: $format"
-            echo "Supported formats: text, json"
-            return 1
-            ;;
-    esac
+        
+        if is_system_group "$groupname"; then
+            echo "${ICON_ERROR} Skipped system group: $groupname"
+            skipped=$((skipped + 1))
+            continue
+        fi
+        
+        local primary_users=$(find_users_with_primary_group "$groupname")
+        if [ -n "$primary_users" ]; then
+            echo "$primary_users" | while read user; do
+                sudo usermod -g "$user" "$user" 2>/dev/null
+            done
+        fi
+        
+        if sudo groupdel "$groupname" 2>/dev/null; then
+            echo "${ICON_SUCCESS} Deleted: $groupname"
+            deleted=$((deleted + 1))
+        else
+            skipped=$((skipped + 1))
+        fi
+    done < "$group_file"
+    
+    echo "Summary: $deleted deleted, $skipped skipped"
 }

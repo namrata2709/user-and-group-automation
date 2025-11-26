@@ -1,717 +1,310 @@
 #!/usr/bin/env bash
-# ==============================================================================
-#
-#          FILE: user_add.sh
-#
-#         USAGE: source user_add.sh
-#
-#   DESCRIPTION: A comprehensive library for adding users and groups. It
-#                supports single user creation, batch additions from text or
-#                JSON files, and a provisioning mode to create both groups and
-#                users from a single JSON file. It is designed to be sourced by
-#                other scripts, providing a robust and structured way to manage
-#                user creation.
-#
-#       OPTIONS: ---
-#  REQUIREMENTS: bash, coreutils, jq, getent
-#          BUGS: ---
-#         NOTES: This script is not meant to be executed directly.
-#       AUTHOR: Your Name, your.email@example.com
-# ORGANIZATION: Your Company
-#      CREATED: YYYY-MM-DD
-#     REVISION: 1.2.0
-#
-# ==============================================================================
+# ================================================
+# User Add Module
+# Version: 1.0.1
+# ================================================
+# Handles adding users from files or JSON input
+# ================================================
 
-# ==============================================================================
-# SECTION: CONSTANTS
-# ==============================================================================
-SUCCESS=0
-HARD_FAILURE=1
-SOFT_FAILURE=2
-
-# ==============================================================================
-# SECTION: PRIVATE HELPER FUNCTIONS
-# ==============================================================================
-
-# ------------------------------------------------------------------------------
-# FUNCTION: _add_user_status_to_array()
-#
-# DESCRIPTION:
-#   A private helper to build a standardized user status JSON object and add it
-#   to a specified array. This centralizes the creation of structured output
-#   for user operations, making it easier to track the status of each addition
-#   (success, skipped, or failed).
-#
-# ARGUMENTS:
-#   $1 (nameref): The name of the array to which the JSON object will be added.
-#   $2: The name of the user.
-#   $3: The status of the operation (e.g., "success", "skipped", "failed").
-#   $4: For "success", the user's primary group. For "skipped" or "failed",
-#       the reason for the status.
-#   $5: For "success", the user's secondary groups.
-#   $6: For "success", the user's shell.
-# ------------------------------------------------------------------------------
-_add_user_status_to_array() {
-    local -n target_array=$1
-    local username=$2
-    local status=$3
-    local json_obj
-
-    case "$status" in
-        "success")
-            local primary_group=$4
-            local secondary_groups=$5
-            local shell=$6
-            json_obj=$(jq -n \
-                --arg u "$username" \
-                --arg pg "$primary_group" \
-                --arg sg "$secondary_groups" \
-                --arg sh "$shell" \
-                '{username: $u, status: "success", details: {primary_group: $pg, secondary_groups: $sg, shell: $sh}}')
-            ;;
-        "skipped"|"failed")
-            local reason=$4
-            json_obj=$(jq -n \
-                --arg u "$username" \
-                --arg s "$status" \
-                --arg r "$reason" \
-                '{username: $u, status: $s, reason: $r}')
-            ;;
-    esac
-    target_array+=("$json_obj")
-}
-
-# ------------------------------------------------------------------------------
-# FUNCTION: _rollback_user_creation()
-#
-# DESCRIPTION:
-#   A private helper to roll back the creation of a user if a subsequent
-#   operation (like adding to sudo) fails. This ensures the system is not left
-#   in a partially configured state.
-#
-# ARGUMENTS:
-#   $1: The username to delete.
-# ------------------------------------------------------------------------------
-_rollback_user_creation() {
-    local username=$1
-    log_action "ROLLBACK" "Attempting to roll back creation of user '$username'."
-    if [[ "$DRY_RUN" == "true" ]]; then
-        log_action "DRY-RUN" "Would execute: userdel -r \"$username\""
-    else
-        if userdel -r "$username"; then
-            log_action "SUCCESS" "Successfully rolled back creation of user '$username'."
-        else
-            log_action "ERROR" "Failed to roll back creation of user '$username'."
-        fi
+# add_users()
+# Adds users from a text file
+# Args:
+#   $1 - user file path
+# Format:
+#   username:comment:expiry:shell:sudo:password
+# Returns:
+#   Summary of operations
+add_users() {
+    local user_file="$1"
+    
+    if [[ ! -f "$user_file" ]]; then
+        echo "${ICON_ERROR} User file not found: $user_file"
+        return 1
     fi
-}
-
-# ------------------------------------------------------------------------------
-# FUNCTION: _parse_users_from_text()
-#
-# DESCRIPTION:
-#   Parses a text file containing user definitions (one per line) and converts
-#   them into a JSON array of user objects. This allows the rest of the script
-#   to process text-based batch files as if they were JSON, unifying the
-#   processing pipeline.
-#
-#   The text file can be in a simple format (username only) or a CSV-like
-#   format: username,primary_group,secondary_groups,shell,sudo
-#
-# ARGUMENTS:
-#   $1: The path to the text file.
-#
-# OUTPUTS:
-#   Prints a JSON array of user objects to stdout.
-# ------------------------------------------------------------------------------
-_parse_users_from_text() {
-    local input_file=$1
-    local json_objects=()
-
-    while IFS=, read -r username primary_group secondary_groups shell sudo; do
-        # Trim whitespace from all fields
-        username=$(echo "$username" | awk '{$1=$1};1')
-        primary_group=$(echo "$primary_group" | awk '{$1=$1};1')
-        secondary_groups=$(echo "$secondary_groups" | awk '{$1=$1};1')
-        shell=$(echo "$shell" | awk '{$1=$1};1')
-        sudo=$(echo "$sudo" | awk '{$1=$1};1')
-
-        # Ignore empty lines or lines starting with #
-        if [[ -z "$username" || "$username" == \#* ]]; then
-            continue
-        fi
-
-        # Build a JSON object for the user
-        local user_obj
-        user_obj=$(jq -n \
-            --arg u "$username" \
-            --arg pg "${primary_group:-}" \
-            --arg sg "${secondary_groups:-}" \
-            --arg sh "${shell:-/bin/bash}" \
-            --arg s "${sudo:-no}" \
-            '{username: $u, primary_group: $pg, secondary_groups: $sg, shell: $sh, sudo: $s}')
+    
+    echo "=========================================="
+    echo "Adding Users from: $user_file"
+    [ "$DRY_RUN" = true ] && echo "${ICON_SEARCH} DRY-RUN MODE"
+    [ -n "$GLOBAL_EXPIRE" ] && echo "📅 Expiration: $GLOBAL_EXPIRE"
+    [ -n "$GLOBAL_SHELL" ] && echo "🐚 Shell: $GLOBAL_SHELL"
+    [ "$GLOBAL_SUDO" = true ] && echo "🔐 Sudo: enabled"
+    [ "$GLOBAL_PASSWORD" = "random" ] && echo "🔑 Password: random (unique per user)"
+    [ -n "$GLOBAL_PASSWORD_EXPIRY" ] && echo "⏱️  Password expiry: $GLOBAL_PASSWORD_EXPIRY days"
+    echo "=========================================="
+    echo ""
+    
+    local count=0 created=0 skipped=0 failed=0
+    
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Skip comments and empty lines
+        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+        line=$(echo "$line" | sed 's/#.*$//' | xargs)
+        [ -z "$line" ] && continue
         
-        json_objects+=("$user_obj")
-    done < "$input_file"
-
-    # Assemble the final JSON array
-    jq -n --argjson users "$(printf '%s\n' "${json_objects[@]}" | jq -s '.')" '{"users": $users}'
-}
-
-# =================================================================================================
-# CORE FUNCTIONS
-# =================================================================================================
-
-# ------------------------------------------------------------------------------
-# FUNCTION: _add_single_user()
-#
-# DESCRIPTION:
-#   Creates a single user on the system after validating the username and
-#   checking for existing users. It constructs the appropriate `useradd`
-#   command based on the provided parameters and serves as the fundamental
-#   building block for all user creation operations.
-#
-# ARGUMENTS:
-#   $1: The name of the user to create.
-#   $2: The primary group for the user. If empty, a group with the same name
-#       as the user is created.
-#   $3: A comma-separated list of secondary groups (optional).
-#   $4: The shell to assign to the user (defaults to "/bin/bash").
-#
-# GLOBALS:
-#   DRY_RUN (read): If set to "true", logs the intended action without making
-#                   any actual changes to the system.
-#
-# RETURNS:
-#   SUCCESS (0): On success or if in dry-run mode.
-#   HARD_FAILURE (1): On hard failure (e.g., invalid input, `useradd` command fails).
-#   SOFT_FAILURE (2): On soft failure (e.g., the user already exists).
-# ------------------------------------------------------------------------------
-_add_single_user() {
-    # --- Argument Parsing ---
-    # Initialize all optional values to empty.
-    local username=""
-    local primary_group=""
-    local secondary_groups=""
-    local shell=""
-    local sudo_access="false"
-    local password=""
-
-    # Loop through all arguments to parse named flags, as you suggested.
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            --name|--username)
-                username="$2"
-                shift 2
-                ;;
-            --group)
-                primary_group="$2"
-                shift 2
-                ;;
-            --secondary-groups)
-                secondary_groups="$2"
-                shift 2
-                ;;
-            --shell)
-                shell="$2"
-                shift 2
-                ;;
-            --sudo)
-                sudo_access="true"
-                shift 1
-                ;;
-            --password)
-                password="$2"
-                shift 2
-                ;;
-            -*)
-                log_error "Unknown option for single user creation: $1"
-                _display_help "add"
-                return "$SOFT_FAILURE"
-                ;;
-            *)
-                # Positional arguments for username are no longer supported to avoid ambiguity.
-                log_error "Invalid argument '$1'. Please specify the username with the --name flag."
-                _display_help "add"
-                return "$SOFT_FAILURE"
-                ;;
-        esac
-    done
-
-    # --- Validation ---
-    if [ -z "$username" ]; then
-        log_error "Username not provided. Please specify it with --name <username>."
-        _display_help "add"
-        return "$SOFT_FAILURE"
-    fi
-
-    # --- Apply Defaults ---
-    # As you correctly pointed out, we apply defaults only if the flags were not used.
-    primary_group=${primary_group:-$DEFAULT_PRIMARY_GROUP}
-    shell=${shell:-$DEFAULT_SHELL}
-
-    # --- Further Validation ---
-    if ! is_valid_username "$username"; then
-        log_error "Invalid username format: '$username'."
-        return "$SOFT_FAILURE"
-    fi
-
-    if [ -z "$primary_group" ]; then
-        log_error "Primary group cannot be empty. Please specify with --group or set DEFAULT_PRIMARY_GROUP in the config."
-        return "$HARD_FAILURE"
-    fi
-
-    if ! group_exists "$primary_group"; then
-        log_warning "Primary group '$primary_group' does not exist. Attempting to create it."
-        if ! sudo groupadd "$primary_group"; then
-            log_error "Failed to create primary group '$primary_group'."
-            return "$HARD_FAILURE"
-        fi
-    fi
-
-    if [ -n "$shell" ] && ! is_valid_shell "$shell"; then
-        log_error "Invalid shell: '$shell'. Not listed in /etc/shells."
-        return "$SOFT_FAILURE"
-    fi
-
-    # --- Build useradd command ---
-    local useradd_opts=()
-    useradd_opts+=("-g" "$primary_group")
-    [ -n "$shell" ] && useradd_opts+=("-s" "$shell")
-    [ -n "$secondary_groups" ] && useradd_opts+=("-G" "$secondary_groups")
-
-    # --- Execute useradd ---
-    log_info "Attempting to create user '$username'..."
-    if ! sudo useradd "${useradd_opts[@]}" "$username"; then
-        log_error "Failed to create user '$username' using useradd command."
-        return "$HARD_FAILURE"
-    fi
-
-    log_success "User '$username' created successfully."
-
-    # --- Password and Sudo ---
-    if [ -n "$password" ]; then
-        echo "$username:$password" | sudo chpasswd
-        log_info "Password set for user '$username'."
-    fi
-
-    if [ "$sudo_access" = "true" ]; then
-        if ! usermod -aG sudo "$username"; then
-             log_warning "Could not add user '$username' to sudo group. The group may not exist."
-        else
-             log_info "User '$username' added to sudo group."
-        fi
-    fi
-
-    return "$SUCCESS"
-}
-
-# ------------------------------------------------------------------------------
-# FUNCTION: _add_users_core()
-#
-# DESCRIPTION:
-#   Processes a list of users from a JSON input stream (passed as an argument),
-#   creating them one by one. This function serves as the unified core for all
-#   batch user creation.
-#
-# ARGUMENTS:
-#   $1: A JSON string containing an array of user objects.
-#
-# GLOBALS:
-#   DRY_RUN (read): Passed to the core creation function.
-#
-# OUTPUTS:
-#   Displays a summary of created, existing, and failed users.
-# ------------------------------------------------------------------------------
-_add_users_core() {
-    local file_path="$1"
-    local format="${2:-tsv}"
-
-    if [ ! -f "$file_path" ]; then
-        log_error "Batch user file not found: '$file_path'"
-        return "$HARD_FAILURE"
-    fi
-
-    log_info "Starting batch user creation from file: '$file_path' (format: $format)"
-    _display_banner "Batch User Creation"
-
-    local line_number=0
-    local success_count=0
-    local failure_count=0
-
-    # This function is in report.sh, ensure it's loaded.
-    initialize_batch_summary
-
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        ((line_number++))
-        if [[ -z "$line" || "$line" =~ ^# ]]; then continue; fi
-
-        local username primary_group shell secondary_groups sudo comment
-        case "$format" in
-            "tsv") IFS=$'\t' read -r username primary_group shell secondary_groups sudo comment <<< "$line" ;;
-            "csv") IFS=',' read -r username primary_group shell secondary_groups sudo comment <<< "$line" ;;
-            *)
-                log_error "Unsupported batch format: '$format' on line $line_number."
-                ((failure_count++)); continue ;;
-        esac
-
-        local args=()
-        if [ -z "$username" ]; then
-            log_error "Skipping line $line_number: Username is missing."
-            ((failure_count++)); continue
-        fi
-        args+=(--name "$username")
-
-        [ -n "$primary_group" ] && args+=(--group "$primary_group")
-        [ -n "$shell" ] && args+=(--shell "$shell")
-        [ -n "$secondary_groups" ] && args+=(--secondary-groups "$secondary_groups")
-        [ -n "$comment" ] && args+=(--comment "$comment")
-        if [[ "$sudo" == "yes" || "$sudo" == "true" ]]; then
-            args+=(--sudo)
-        fi
-
-        # CORRECTED: Call _add_single_user with only the array of named flags.
-        if _add_single_user "${args[@]}"; then
-            ((success_count++))
-            # This function is in report.sh, ensure it's loaded.
-            _add_user_status_to_array "$username" "SUCCESS" "User created."
-        else
-            ((failure_count++))
-            _add_user_status_to_array "$username" "FAILURE" "Failed to create user (see log for details)."
-        fi
-    done < "$file_path"
-
-    log_info "Batch processing complete. Success: $success_count, Failure: $failure_count"
-    # This function is in report.sh, ensure it's loaded.
-    print_batch_summary
-
-    if [ "$failure_count" -gt 0 ]; then
-        return "$SOFT_FAILURE"
-    else
-        return "$SUCCESS"
-    fi
-}
-
-add_users() {
-# ------------------------------------------------------------------------------
-# FUNCTION: _provision_users_and_groups_core()
-#
-# DESCRIPTION:
-#   Provisions groups and then users from a single JSON file. It first
-#   processes all groups, then all users, ensuring that groups exist before
-#   users are assigned to them. It also includes a rollback mechanism to
-#   delete any newly created groups that have no successfully created users.
-#
-# ARGUMENTS:
-#   $1: The path to the JSON file containing user and group definitions.
-#
-# GLOBALS:
-#   DRY_RUN (read): Passed to the core creation functions.
-#
-# OUTPUTS:
-#   Displays a summary of created, existing, and failed users and groups.
-# ------------------------------------------------------------------------------
-_provision_users_and_groups_core() {
-    local json_file=$1
-    local created_users=()
-    local existing_users=()
-    local failed_users=()
-    local created_groups=()
-    local existing_groups=()
-    local failed_groups=()
-    local -A failed_groups_map=()
-    local -A groups_created_in_this_run=()
-    local -A users_successfully_created_for_group=()
-
-
-    # --- 1. Create Groups ---
-    log_action "INFO" "Starting group creation phase..."
-    while IFS= read -r group_json; do
-        local groupname=$(echo "$group_json" | jq -r '.name')
-        add_single_group "$groupname"
-        local exit_code=$?
-
-        if [[ $exit_code -eq 0 ]]; then
-            _add_group_status_to_array created_groups "$groupname" "success"
-            groups_created_in_this_run["$groupname"]=1
-        elif [[ $exit_code -eq 2 ]]; then
-            _add_group_status_to_array existing_groups "$groupname" "skipped" "Group already exists"
-        else
-            _add_group_status_to_array failed_groups "$groupname" "failed" "Failed to create group"
-            failed_groups_map["$groupname"]=1
-        fi
-    done < <(jq -c '.groups[]' "$json_file" 2>/dev/null)
-
-    # --- 2. Create Users ---
-    log_action "INFO" "Starting user creation phase..."
-    while IFS= read -r user_json; do
-        local username=$(echo "$user_json" | jq -r '.username')
-        local primary_group=$(echo "$user_json" | jq -r '.primary_group')
-        local secondary_groups=$(echo "$user_json" | jq -r '.secondary_groups // ""')
-        local shell_access=$(echo "$user_json" | jq -r '.shell // "/bin/bash"')
-        local sudo=$(echo "$user_json" | jq -r '.sudo // "no"')
-
-        # Check if the primary group failed to be created
-        if [[ ${failed_groups_map["$primary_group"]+abc} ]]; then
-            _add_user_status_to_array failed_users "$username" "failed" "Skipped because primary group '$primary_group' creation failed"
+        count=$((count + 1))
+        
+        # Parse line: username:comment:expiry:shell:sudo:password
+        local username comment expiry shell sudo password
+        IFS=':' read -r username comment expiry shell sudo password <<< "$line"
+        username=$(echo "$username" | xargs)
+        
+        # Validate username
+        if ! validate_name "$username" "user"; then
+            failed=$((failed + 1))
             continue
         fi
-
-        local error_reason
-        _add_single_user "$username" "$primary_group" "$secondary_groups" "$shell_access"
-        local exit_code=$?
-
-        if [[ $exit_code -eq 0 ]]; then
-            # Grant sudo access if specified
-            if [[ "$sudo" == "yes" ]]; then
-                if [[ "$DRY_RUN" == "true" ]]; then
-                    log_action "DRY-RUN" "Would add user '$username' to sudo group."
-                    # If not a dry run, assume success for status reporting
-                    if [[ "$DRY_RUN" != "true" ]]; then
-                        users_successfully_created_for_group["$primary_group"]=1
-                        _add_user_status_to_array created_users "$username" "success" "$primary_group" "$secondary_groups" "$shell_access"
-                    fi
-                else
-                    usermod -aG sudo "$username"
-                    if [[ $? -eq 0 ]]; then
-                        log_action "SUCCESS" "Added user '$username' to sudo group."
-                        users_successfully_created_for_group["$primary_group"]=1
-                        _add_user_status_to_array created_users "$username" "success" "$primary_group" "$secondary_groups" "$shell_access"
-                    else
-                        log_action "ERROR" "Failed to add user '$username' to sudo group. Rolling back user creation."
-                        _rollback_user_creation "$username"
-                        _add_user_status_to_array failed_users "$username" "failed" "Failed to grant sudo privileges."
-                    fi
-                fi
+        
+        # Use global shell if not specified
+        [ -z "$shell" ] && shell="$GLOBAL_SHELL"
+        [ -z "$shell" ] && shell="a"
+        
+        # Validate and normalize shell
+        if ! validate_shell "$shell"; then
+            failed=$((failed + 1))
+            continue
+        fi
+        shell=$(normalize_shell "$shell")
+        
+        # Use global expiry if not specified
+        [ -z "$expiry" ] && expiry="$GLOBAL_EXPIRE"
+        
+        # Calculate expiry date
+        local expiry_date=""
+        if [ -n "$expiry" ]; then
+            if [[ "$expiry" =~ ^[0-9]+$ ]]; then
+                expiry_date=$(date -d "+${expiry} days" +%Y-%m-%d)
+            elif validate_date "$expiry"; then
+                expiry_date="$expiry"
             else
-                users_successfully_created_for_group["$primary_group"]=1
-                _add_user_status_to_array created_users "$username" "success" "$primary_group" "$secondary_groups" "$shell_access"
+                echo "${ICON_ERROR} Invalid expiry date for $username: $expiry"
+                failed=$((failed + 1))
+                continue
             fi
-        elif [[ $exit_code -eq 2 ]]; then
-            _add_user_status_to_array existing_users "$username" "skipped" "User already exists"
+        fi
+        
+        # Handle sudo
+        [ -z "$sudo" ] && [ "$GLOBAL_SUDO" = true ] && sudo="yes"
+        sudo=$(normalize_sudo "$sudo")
+        
+        # Handle password (FIXED: uses DEFAULT_PASSWORD now)
+        local user_password="$DEFAULT_PASSWORD"
+        
+        # Priority: file column > global flag > default
+        if [ -n "$password" ]; then
+            if [ "$password" = "random" ]; then
+                user_password=$(generate_random_password "${PASSWORD_LENGTH:-16}")
+            else
+                user_password="$password"
+            fi
+        elif [ "$GLOBAL_PASSWORD" = "random" ]; then
+            user_password=$(generate_random_password "${PASSWORD_LENGTH:-16}")
+        fi
+        
+        # Comment field
+        local gecos=""
+        [ -n "$comment" ] && gecos="$comment"
+        
+        # Check if user already exists
+        if id "$username" &>/dev/null; then
+            echo "${ICON_WARNING} User '$username' already exists. Skipping..."
+            skipped=$((skipped + 1))
+            continue
+        fi
+        
+        # DRY-RUN mode
+        if [ "$DRY_RUN" = true ]; then
+            echo "${ICON_SEARCH} [DRY-RUN] Would create user: $username"
+            [ -n "$gecos" ] && echo "   - Comment: $gecos"
+            echo "   - Home: /home/$username"
+            echo "   - Shell: $shell"
+            [ -n "$expiry_date" ] && echo "   - Account expires: $expiry_date"
+            [ "$sudo" = "yes" ] && echo "   - Sudo: enabled"
+            [ "$user_password" != "$DEFAULT_PASSWORD" ] && echo "   - Password: random (unique)"
+            [ -n "$GLOBAL_PASSWORD_EXPIRY" ] && echo "   - Password expires: $GLOBAL_PASSWORD_EXPIRY days"
+            created=$((created + 1))
+            echo ""
+            continue
+        fi
+        
+        # Create user
+        echo "${ICON_USER} Creating user: $username"
+        
+        local useradd_opts="-m -s $shell"
+        [ -n "$gecos" ] && useradd_opts="$useradd_opts -c \"$gecos\""
+        
+        if eval sudo useradd $useradd_opts "$username" 2>/dev/null; then
+            echo "   ${ICON_SUCCESS} User created"
+            
+            # Set password
+            echo "$username:$user_password" | sudo chpasswd 2>/dev/null
+            
+            # Show password info
+            if [ "$user_password" != "$DEFAULT_PASSWORD" ]; then
+                echo "   🔑 Random password: $user_password"
+            else
+                echo "   🔐 Default password set"
+            fi
+            
+            # Force password change on first login
+            sudo chage -d 0 "$username"
+            echo "   🔄 Must change password on first login"
+            
+            # Set password expiry
+            local pwd_expiry="${GLOBAL_PASSWORD_EXPIRY:-${PASSWORD_EXPIRY_DAYS:-90}}"
+            local pwd_warn="${PASSWORD_WARN_DAYS:-7}"
+            sudo chage -M "$pwd_expiry" -W "$pwd_warn" "$username"
+            echo "   ⏱️  Password expires every: $pwd_expiry days"
+            
+            # Set account expiry
+            if [ -n "$expiry_date" ]; then
+                sudo chage -E "$expiry_date" "$username"
+                echo "   📅 Account expires: $expiry_date"
+            fi
+            
+            # Add to sudo group
+            if [ "$sudo" = "yes" ]; then
+                sudo usermod -aG sudo "$username" 2>/dev/null || \
+                sudo usermod -aG wheel "$username" 2>/dev/null
+                echo "   🔐 Sudo access: granted"
+            fi
+            
+            # Display other info
+            [ -n "$gecos" ] && echo "   💬 Comment: $gecos"
+            echo "   🐚 Shell: $shell"
+            
+            # Save password to secure file if random
+            if [ "$user_password" != "$DEFAULT_PASSWORD" ]; then
+                local password_dir="${BACKUP_DIR}/passwords"
+                sudo mkdir -p "$password_dir"
+                sudo chmod 700 "$password_dir"
+                
+                local timestamp=$(date '+%Y%m%d_%H%M%S')
+                local password_file="$password_dir/${username}_${timestamp}.txt"
+                
+                {
+                    echo "User Creation - Random Password"
+                    echo "================================"
+                    echo "User: $username"
+                    echo "Date: $(date)"
+                    echo "Created By: $USER"
+                    echo "Password: $user_password"
+                    echo ""
+                    echo "User must change on first login"
+                    echo ""
+                    echo "⚠️  DELETE THIS FILE after password is delivered"
+                } | sudo tee "$password_file" >/dev/null
+                
+                sudo chmod 600 "$password_file"
+                echo "   📄 Password saved: $password_file"
+            fi
+            
+            log_action "add_user" "$username" "SUCCESS" "shell=$shell, sudo=$sudo, random_pwd=$([[ "$user_password" != "$DEFAULT_PASSWORD" ]] && echo yes || echo no)"
+            created=$((created + 1))
         else
-            _add_user_status_to_array failed_users "$username" "failed" "Failed during user creation."
+            echo "   ${ICON_ERROR} Failed to create user: $username"
+            log_action "add_user" "$username" "FAILED" "useradd command failed"
+            failed=$((failed + 1))
         fi
-    done < <(jq -c '.users[]' "$json_file" 2>/dev/null)
-
-    # --- 3. Rollback Orphaned Groups ---
-    log_action "INFO" "Starting rollback phase for orphaned groups..."
-    for group in "${!groups_created_in_this_run[@]}"; do
-        if [[ ! ${users_successfully_created_for_group["$group"]+abc} ]]; then
-            log_action "ROLLBACK" "Deleting group '$group' as no users were successfully created for it."
-            delete_single_group "$group"
-        fi
-    done
-
-    # Display results
-    _display_add_users_bash_results "${created_users[@]}" "${existing_users[@]}" "${failed_users[@]}"
-    _display_add_groups_bash_results "${created_groups[@]}" "${existing_groups[@]}" "${failed_groups[@]}"
+        echo ""
+    done < "$user_file"
+    
+    echo "=========================================="
+    echo "Summary:"
+    echo "  Total processed: $count"
+    echo "  Created: $created"
+    echo "  Skipped: $skipped"
+    echo "  Failed: $failed"
+    echo "=========================================="
+    
+    return 0
 }
 
-# =================================================================================================
-# PUBLIC FUNCTIONS
-# =================================================================================================
-
-# ------------------------------------------------------------------------------
-# FUNCTION: add_users()
-#
-# DESCRIPTION:
-#   The main entry point for adding users. It handles command-line argument
-#   parsing, input validation, and delegates to the appropriate core function
-#   based on the specified mode (single user, batch from text, batch from
-#   JSON, or provisioning).
-#
-# ARGUMENTS:
-#   $@: All command-line arguments passed to the function.
-#
-# RETURNS:
-#   0: On success (even if some individual operations failed).
-#   1: On invalid arguments or input validation failure.
-# ------------------------------------------------------------------------------
-add_users() {
-    local input_file=""
-    local input_format="text"
-    local mode="single"
-    local provisioning_mode=false
-    local json_input_stream=""
-
-    # Parse arguments
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            --file)
-                input_file="$2"
-                input_format="text"
-                mode="batch"
-                shift 2
-                ;;
-            --json)
-                input_file="$2"
-                input_format="json"
-                mode="batch"
-                shift 2
-                ;;
-            --provision)
-                input_file="$2"
-                input_format="json"
-                mode="provision"
-                provisioning_mode=true
-                shift 2
-                ;;
-            --help)
-                _display_help "add"
-                return 0
-                ;;
-            *)
-                # Single user mode
-                _add_single_user "$@"
-                return $?
-        esac
-    done
-
-    # Input validation for batch/provisioning modes
-    if [[ "$mode" != "single" ]]; then
-        if [[ -z "$input_file" ]]; then
-            log_action "ERROR" "Input file is required for batch or provisioning mode."
-            return 1
-        fi
-        if [[ ! -f "$input_file" ]]; then
-            log_action "ERROR" "Input file not found: $input_file"
-            return 1
-        fi
+# add_users_to_groups()
+# Adds users to groups from a mapping file
+# Args:
+#   $1 - mapping file path
+# Format:
+#   groupname:user1 user2 user3
+# Returns:
+#   None
+add_users_to_groups() {
+    local mapping_file="$1"
+    
+    if [[ ! -f "$mapping_file" ]]; then
+        echo "${ICON_ERROR} Mapping file not found: $mapping_file"
+        return 1
     fi
-
-    # Convert text file to JSON stream if necessary
-    if [[ "$mode" == "batch" && "$input_format" == "text" ]]; then
-        json_input_stream=$(_parse_users_from_text "$input_file")
-        if [[ -z "$json_input_stream" ]]; then
-            log_action "ERROR" "Failed to parse text file or file is empty."
-            return 1
+    
+    echo "=========================================="
+    echo "Adding Users to Groups from: $mapping_file"
+    [ "$DRY_RUN" = true ] && echo "${ICON_SEARCH} DRY-RUN MODE"
+    echo "=========================================="
+    echo ""
+    
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Skip comments and empty lines
+        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+        line=$(echo "$line" | sed 's/#.*$//' | xargs)
+        [ -z "$line" ] && continue
+        
+        # Parse: groupname:user1 user2 user3
+        local group=$(echo "$line" | cut -d':' -f1 | xargs)
+        local users=$(echo "$line" | cut -d':' -f2 | xargs)
+        
+        if [[ -z "$group" || -z "$users" ]]; then
+            echo "${ICON_WARNING} Invalid format: $line"
+            continue
         fi
-        input_file="" # Unset to avoid confusion
-    fi
-
-    # Batch validation for batch/provisioning modes
-    if [[ "$mode" != "single" ]]; then
-        log_action "INFO" "Starting batch validation phase..."
-        local validation_errors=0
-        local user_source
-
-        if [[ -n "$json_input_stream" ]]; then
-            user_source=$(echo "$json_input_stream" | jq -c '.users[]')
-        elif [[ -n "$input_file" ]]; then
-            user_source=$(jq -c '.users[]' "$input_file" 2>/dev/null)
+        
+        # Validate group name
+        if ! validate_name "$group" "group"; then
+            continue
         fi
-
-        # Validate usernames
-        while IFS= read -r user_json; do
-            local username=$(echo "$user_json" | jq -r '.username')
-            if [[ -z "$username" ]]; then
-                log_action "ERROR" "Validation failed: Missing username in input."
-                ((validation_errors++))
-            elif ! validate_name "$username" "user"; then
-                log_action "ERROR" "Validation failed: Invalid username format: '$username'"
-                ((validation_errors++))
+        
+        echo "Processing group: $group"
+        
+        # Create group if doesn't exist
+        if ! getent group "$group" >/dev/null 2>&1; then
+            if [ "$DRY_RUN" = true ]; then
+                echo "  ${ICON_SEARCH} [DRY-RUN] Would create group: $group"
+            else
+                echo "  ${ICON_GROUP} Creating group: $group"
+                sudo groupadd "$group"
+                log_action "add_group" "$group" "SUCCESS" "Created for user-group mapping"
             fi
-        done <<< "$user_source"
-
-        # Validate groups
-        if [[ "$provisioning_mode" == false ]]; then
-            while IFS= read -r user_json; do
-                local primary_group=$(echo "$user_json" | jq -r '.primary_group // ""')
-                local secondary_groups=$(echo "$user_json" | jq -r '.secondary_groups // ""')
-
-                # Check primary group existence
-                if [[ -n "$primary_group" ]] && ! getent group "$primary_group" &>/dev/null; then
-                    log_action "ERROR" "Validation failed: Primary group '$primary_group' does not exist on the system."
-                    ((validation_errors++))
-                fi
-
-                # Check secondary groups existence
-                if [[ -n "$secondary_groups" ]]; then
-                    IFS=',' read -ra SEC_GROUPS <<< "$secondary_groups"
-                    for group in "${SEC_GROUPS[@]}"; do
-                        if ! getent group "$group" &>/dev/null; then
-                            log_action "ERROR" "Validation failed: Secondary group '$group' does not exist on the system."
-                            ((validation_errors++))
-                        fi
-                    done
-                fi
-            done <<< "$user_source"
-        else
-            # In provisioning mode, check if groups are defined in the same file
-            while IFS= read -r user_json; do
-                local primary_group=$(echo "$user_json" | jq -r '.primary_group // ""')
-                if [[ -n "$primary_group" ]]; then
-                    local group_exists_in_file
-                    group_exists_in_file=$(jq --arg pg "$primary_group" '.groups[]? | select(.name == $pg) | .name' "$input_file")
-                    if [[ -z "$group_exists_in_file" ]]; then
-                        log_action "ERROR" "Validation failed: Primary group '$primary_group' for user is not defined in the provisioning file."
-                        ((validation_errors++))
-                    fi
-                fi
-            done < <(jq -c '.users[]' "$input_file" 2>/dev/null)
         fi
-
-        if [[ $validation_errors -gt 0 ]]; then
-            log_action "ERROR" "Batch validation failed with $validation_errors error(s). Aborting."
-            return 1
-        fi
-        log_action "SUCCESS" "Batch validation completed successfully."
-    fi
-
-    # Execute based on mode
-    case "$mode" in
-        single)
-            _display_banner "User Addition"
-            local created_users=()
-            local existing_users=()
-            local failed_users=()
-
-            local error_reason
-            _add_single_user "$username" "$primary_group" "$secondary_groups" "$shell_access"
-            local exit_code=$?
-
-            if [[ $exit_code -eq 0 ]]; then
-                if [[ "$sudo" == "yes" ]]; then
-                    if [[ "$DRY_RUN" == "true" ]]; then
-                        log_action "DRY-RUN" "Would add user '$username' to sudo group."
-                        _add_user_status_to_array created_users "$username" "success" "$primary_group" "$secondary_groups" "$shell_access"
-                    else
-                        usermod -aG sudo "$username"
-                        if [[ $? -eq 0 ]]; then
-                            log_action "SUCCESS" "Added user '$username' to sudo group."
-                            _add_user_status_to_array created_users "$username" "success" "$primary_group" "$secondary_groups" "$shell_access"
-                        else
-                            log_action "ERROR" "Failed to add user '$username' to sudo group. Rolling back user creation."
-                            _rollback_user_creation "$username"
-                            _add_user_status_to_array failed_users "$username" "failed" "Failed to grant sudo privileges."
-                            exit_code=1 # Ensure the final exit code reflects the failure
-                        fi
-                    fi
+        
+        # Process each user
+        for user in $users; do
+            if ! validate_name "$user" "user"; then
+                continue
+            fi
+            
+            if id "$user" &>/dev/null; then
+                # User exists, add to group
+                if [ "$DRY_RUN" = true ]; then
+                    echo "  ${ICON_SEARCH} [DRY-RUN] Would add '$user' to '$group'"
                 else
-                    _add_user_status_to_array created_users "$username" "success" "$primary_group" "$secondary_groups" "$shell_access"
+                    echo "  ${ICON_USER} Adding '$user' to '$group'"
+                    sudo usermod -aG "$group" "$user"
+                    log_action "add_user_to_group" "$user" "SUCCESS" "Added to group: $group"
                 fi
-            elif [[ $exit_code -eq 2 ]]; then
-                _add_user_status_to_array existing_users "$username" "skipped" "User already exists"
             else
-                _add_user_status_to_array failed_users "$username" "failed" "Failed during user creation."
+                # User doesn't exist, create and add
+                if [ "$DRY_RUN" = true ]; then
+                    echo "  ${ICON_SEARCH} [DRY-RUN] Would create '$user' and add to '$group'"
+                else
+                    echo "  ${ICON_USER} Creating '$user' and adding to '$group'"
+                    sudo useradd -m "$user"
+                    echo "$user:$DEFAULT_PASSWORD" | sudo chpasswd
+                    sudo usermod -aG "$group" "$user"
+                    sudo chage -d 0 "$user"
+                    log_action "add_user" "$user" "SUCCESS" "Created and added to group: $group"
+                fi
             fi
-
-           _display_add_users_bash_results "${created_users[@]}" "${existing_users[@]}" "${failed_users[@]}"
-            return $exit_code
-            ;;
-        batch)
-            _display_banner "User Addition"
-            if [[ -n "$json_input_stream" ]]; then
-                echo "$json_input_stream" | _add_users_core
-            else
-                cat "$input_file" | _add_users_core
-            fi
-            ;;
-        provision)
-            _display_banner "User and Group Provisioning"
-            _provision_users_and_groups_core "$input_file"
-            ;;
-    esac
+        done
+        echo ""
+    done < "$mapping_file"
+    
+    return 0
 }

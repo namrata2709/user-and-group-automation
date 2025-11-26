@@ -6,11 +6,11 @@ validate_username() {
     fi
     
     # Additional check: cannot end with hyphen
-    if echo "$username" | grep -q '-$'; then
+    if  [[ $username == *- ]]; then
         return 1
     fi
 
-    if ! echo "$username" | grep -qE '^[a-z_][a-z0-9_-]*$'; then
+    if ![[ $username =~ ^[a-z_][a-z0-9_-]*$ ]]; then
         return 1
     fi
     

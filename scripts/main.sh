@@ -12,7 +12,6 @@ user_exists() {
 
 add_user() {
     local username="$1"
-    local password="$2"
 
     if [ "$(user_exists "$username")" = "yes" ]; then
         echo "User already exists"
@@ -20,7 +19,35 @@ add_user() {
     fi
 
     useradd -m "$username"
-    echo "$username:$password" | chpasswd
-
     echo "User created"
 }
+
+main() {
+    command=""
+    username=""
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --add)
+                command="add"
+                ;;
+            --name)
+                username="$2"
+                shift
+                ;;
+            *)
+                echo "Unknown option $1"
+                ;;
+        esac
+        shift
+    done
+
+    if [ "$command" = "add" ]; then
+        add_user "$username"
+        return
+    fi
+
+    echo "Usage: $0 --add --name <username>"
+}
+
+main "$@"

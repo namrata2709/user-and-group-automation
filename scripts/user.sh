@@ -82,3 +82,6 @@ main() {
     echo "No valid command provided"
     exit 1
 }
+
+
+main "$@"

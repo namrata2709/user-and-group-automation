@@ -63,7 +63,7 @@ main() {
     # Execute requested action
     if [ "$command" = "add" ]; then
         if [[ "$target_type" = "user" ]]; then
-                add_user "$username"
+            add_user "$username"
         elif [[ "$target_type" = "group" ]]; then
             echo "ERROR: Group operations not yet implemented"
         else

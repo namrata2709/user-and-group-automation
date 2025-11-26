@@ -2,9 +2,13 @@ validate_username() {
     local username="$1"
 
     if [ -z "$username" ]; then
-        return 2
+        return 1
     fi
     
+    if [ "$len" -gt 32 ]; then
+        return 1
+    fi
+
     # Additional check: cannot end with hyphen
     if  [[ $username == *- ]]; then
         return 1
@@ -14,10 +18,9 @@ validate_username() {
         return 1
     fi
     
-    # Additional check: cannot end with hyphen
-    if echo "$username" | grep -q '-$'; then
-        return 1
-    fi
+    local len=${#username}
+    
+    
 
     return 0
 

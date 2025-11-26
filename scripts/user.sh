@@ -51,10 +51,18 @@ main() {
     done
 
     # Execute requested action
-    if [[ "$command" = "add" ]]; then
-        if [[ "$target_type" = "user" ]]; then
+    if [ "$command" = "add" ]; then
+        if [ "$target" = "user" ]; then
             add_user "$username"
-            exit $?
+        elif [ "$target" = "group" ]; then
+            # add_group "$groupname"  # Future implementation
+            echo "ERROR: Group operations not yet implemented"
+        else
+            echo "ERROR: Invalid target. Use --target user or --target group"
+            return 1
+        fi
+        return
+    fi
         elif [[ "$target_type" = "group" ]]; then
             add_group "$username"   # future function
             exit $?

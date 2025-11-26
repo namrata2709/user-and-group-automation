@@ -1,5 +1,15 @@
 #!/usr/bin/env bash
 
+# Source configuration
+CONFIG_FILE="/opt/admin_dashboard/config/user_mgmt.conf"
+
+if [ -f "$CONFIG_FILE" ]; then
+    source "$CONFIG_FILE"
+else
+    echo "ERROR: Configuration file not found: $CONFIG_FILE"
+    exit 1
+fi
+
 source ./lib/utils/validation.sh
 source ./lib/user_helper.sh
 source ./lib/user_add.sh

@@ -15,8 +15,15 @@ add_user() {
 
     # Create user
     if useradd -m "$username"; then
-        echo "SUCCESS: User '$username' created successfully"
-        return 0
+        # Set default password from config
+        echo "$username:$DEFAULT_PASSWORD" | chpasswd
+        if [ $? -eq 0 ]; then
+            echo "SUCCESS: User '$username' created with default password"
+            return 0
+        else
+            echo "WARNING: User '$username' created but password setting failed"
+            return 1
+        fi
     else
         echo "ERROR: Failed to create user '$username'"
         return 1

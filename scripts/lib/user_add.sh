@@ -1,5 +1,7 @@
 add_user() {
     local username="$1"
+    local use_random="$2"  # "yes" or "no"
+    local password=""
 
     # Validate username
     if ! validate_username "$username"; then
@@ -13,15 +15,28 @@ add_user() {
         return 1
     fi
 
+    # Determine password to use
+    if [ "$use_random" = "yes" ]; then
+        password=$(generate_random_password)
+        echo "INFO: Generated random password for user '$username'"
+    else
+        password="$DEFAULT_PASSWORD"
+    fi
+
     # Create user
     if useradd -m "$username"; then
-        # Set default password from config
-        echo "$username:$DEFAULT_PASSWORD" | chpasswd
+        # Set password
+        echo "$username:$password" | chpasswd
         if [ $? -eq 0 ]; then
             # Force password change on first login
             chage -d 0 "$username"
             if [ $? -eq 0 ]; then
-                echo "SUCCESS: User '$username' created with default password"
+                # Store encrypted password if random was used
+                if [ "$use_random" = "yes" ]; then
+                    store_encrypted_password "$username" "$password"
+                fi
+                
+                echo "SUCCESS: User '$username' created successfully"
                 echo "INFO: User must change password on first login"
                 return 0
             else

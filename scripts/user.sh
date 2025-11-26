@@ -19,6 +19,7 @@ main() {
     local command=""
     local target_type=""
     local username=""
+    local use_random="no"
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -51,6 +52,10 @@ main() {
                 username="$2"
                 shift
                 ;;
+            
+            --random)
+                use_random="yes"
+                ;;
 
             *)
                 echo "Unknown option: $1" >&2
@@ -63,7 +68,7 @@ main() {
     # Execute requested action
     if [ "$command" = "add" ]; then
         if [[ "$target_type" = "user" ]]; then
-            add_user "$username"
+            add_user "$username" "$use_random"
         elif [[ "$target_type" = "group" ]]; then
             echo "ERROR: Group operations not yet implemented"
         else
@@ -76,5 +81,3 @@ main() {
     echo "No valid command provided"
     exit 1
 }
-
-main "$@"

@@ -4,8 +4,10 @@ add_user() {
     local shell_path="$3"      # Shell path (optional)
     local shell_role="$4"      # Shell role (optional)
     local sudo_access="$5"     # "allow" or "deny" (optional)
+    local primary_group="$6"   # Primary group (optional)
     local password=""
     local user_shell=""
+    local group_option=""
 
     # Validate username
     if ! validate_username "$username"; then
@@ -17,6 +19,22 @@ add_user() {
     if [ "$(user_exists "$username")" = "yes" ]; then
         echo "ERROR: User '$username' already exists"
         return 1
+    fi
+
+    # Handle primary group
+    if [ -n "$primary_group" ]; then
+        # Check if group exists
+        if [ "$(group_exists "$primary_group")" = "no" ]; then
+            echo "INFO: Primary group '$primary_group' does not exist, creating..."
+            if ! add_group "$primary_group"; then
+                echo "ERROR: Failed to create primary group '$primary_group'"
+                return 1
+            fi
+        fi
+        group_option="-g $primary_group"
+        echo "INFO: Using primary group: $primary_group"
+    else
+        echo "INFO: Using default primary group (same as username)"
     fi
 
     # Determine shell to use (priority: explicit path > role > default)
@@ -55,8 +73,8 @@ add_user() {
         echo "INFO: Using default password from config"
     fi
 
-    # Create user with determined shell
-    if useradd -m -s "$user_shell" "$username"; then
+    # Create user with determined shell and primary group
+    if useradd -m -s "$user_shell" $group_option "$username"; then
         echo "INFO: User account created successfully"
         
         # Set password

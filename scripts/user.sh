@@ -45,8 +45,9 @@ source "$SCRIPT_DIR/lib/utils/validation.sh"
 source "$SCRIPT_DIR/lib/utils/helpers.sh"
 source "$SCRIPT_DIR/lib/utils/shell_mapper.sh"
 source "$SCRIPT_DIR/lib/utils/sudo_manager.sh"
-source "$SCRIPT_DIR/lib/user_helper.sh"
-source "$SCRIPT_DIR/lib/user_add.sh"
+source "$SCRIPT_DIR/lib/helpers/existence_check.sh"
+source "$SCRIPT_DIR/lib/add/user_add.sh"
+source "$SCRIPT_DIR/lib/add/group_add.sh"
 
 # Rest of your main() function stays the same...
 main() {
@@ -57,6 +58,7 @@ main() {
     local shell_path=""
     local shell_role=""
     local sudo_access=""
+    local primary_group=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -126,6 +128,15 @@ main() {
                 esac
                 shift
                 ;;
+            
+            --primary-group|--pgroup)
+                if [[ -z "$2" ]]; then
+                    echo "Error: --primary-group requires a group name" >&2
+                    exit 1
+                fi
+                primary_group="$2"
+                shift
+                ;;
 
             *)
                 echo "Unknown option: $1" >&2
@@ -137,9 +148,9 @@ main() {
 
     if [ "$command" = "add" ]; then
         if [[ "$target_type" = "user" ]]; then
-            add_user "$username" "$use_random" "$shell_path" "$shell_role" "$sudo_access"
+            add_user "$username" "$use_random" "$shell_path" "$shell_role" "$sudo_access" "$primary_group"
         elif [[ "$target_type" = "group" ]]; then
-            echo "ERROR: Group operations not yet implemented"
+            add_group "$username"  # username variable holds group name for group operations
         else
             echo "ERROR: Invalid target. Use --add user or --add group"
             return 1

@@ -1,5 +1,35 @@
 #!/usr/bin/env bash
 
+# ================================================
+# User Management System - Main Entry Point
+# File: user.sh
+# Version: 1.0
+# ================================================
+
+# ================================================
+# Check if running as root
+# ================================================
+if [ "$EUID" -ne 0 ]; then
+    echo "ERROR: This script must be run as root"
+    echo "Usage: sudo $0 [options]"
+    exit 1
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INSTALL_MARKER="/opt/admin_dashboard/.installed"
+
+# ================================================
+# Check if system is initialized
+# ================================================
+if [ ! -f "$INSTALL_MARKER" ]; then
+    echo "ERROR: System not initialized"
+    echo ""
+    echo "Please run the installation script first:"
+    echo "  sudo ./install.sh"
+    echo ""
+    exit 1
+fi
+
 # Source configuration
 CONFIG_FILE="/opt/admin_dashboard/config/user_mgmt.conf"
 
@@ -10,13 +40,14 @@ else
     exit 1
 fi
 
-source ./lib/utils/validation.sh
-source ./lib/utils/helper.sh
-source ./lib/utils/shell_mapper.sh
-source ./lib/user_helper.sh
-source ./lib/user_add.sh
-# In future: source ./lib/group_add.sh
+# Source library files
+source "$SCRIPT_DIR/lib/utils/validation.sh"
+source "$SCRIPT_DIR/lib/utils/helpers.sh"
+source "$SCRIPT_DIR/lib/utils/shell_mapper.sh"
+source "$SCRIPT_DIR/lib/user_helper.sh"
+source "$SCRIPT_DIR/lib/user_add.sh"
 
+# Rest of your main() function stays the same...
 main() {
     local command=""
     local target_type=""
@@ -29,7 +60,6 @@ main() {
         case "$1" in
             --add)
                 command="add"
-                # The next argument must be "user" or "group"
                 if [[ -z "$2" ]]; then
                     echo "Error: --add requires 'user' or 'group'" >&2
                     exit 1
@@ -44,7 +74,6 @@ main() {
                         exit 1
                         ;;
                 esac
-
                 shift
                 ;;
             
@@ -87,7 +116,6 @@ main() {
         shift
     done
 
-    # Execute requested action
     if [ "$command" = "add" ]; then
         if [[ "$target_type" = "user" ]]; then
             add_user "$username" "$use_random" "$shell_path" "$shell_role"

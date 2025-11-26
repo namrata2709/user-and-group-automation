@@ -44,6 +44,7 @@ fi
 source "$SCRIPT_DIR/lib/utils/validation.sh"
 source "$SCRIPT_DIR/lib/utils/helpers.sh"
 source "$SCRIPT_DIR/lib/utils/shell_mapper.sh"
+source "$SCRIPT_DIR/lib/utils/sudo_manager.sh"
 source "$SCRIPT_DIR/lib/user_helper.sh"
 source "$SCRIPT_DIR/lib/user_add.sh"
 
@@ -55,6 +56,7 @@ main() {
     local use_random="no"
     local shell_path=""
     local shell_role=""
+    local sudo_access=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -107,6 +109,23 @@ main() {
                 shell_role="$2"
                 shift
                 ;;
+            
+            --sudo)
+                if [[ -z "$2" ]]; then
+                    echo "Error: --sudo requires 'allow' or 'deny'" >&2
+                    exit 1
+                fi
+                case "$2" in
+                    allow|deny)
+                        sudo_access="$2"
+                        ;;
+                    *)
+                        echo "Error: --sudo must be 'allow' or 'deny'" >&2
+                        exit 1
+                        ;;
+                esac
+                shift
+                ;;
 
             *)
                 echo "Unknown option: $1" >&2
@@ -118,7 +137,7 @@ main() {
 
     if [ "$command" = "add" ]; then
         if [[ "$target_type" = "user" ]]; then
-            add_user "$username" "$use_random" "$shell_path" "$shell_role"
+            add_user "$username" "$use_random" "$shell_path" "$shell_role" "$sudo_access"
         elif [[ "$target_type" = "group" ]]; then
             echo "ERROR: Group operations not yet implemented"
         else

@@ -3,6 +3,7 @@ add_user() {
     local use_random="$2"      # "yes" or "no"
     local shell_path="$3"      # Shell path (optional)
     local shell_role="$4"      # Shell role (optional)
+    local sudo_access="$5"     # "allow" or "deny" (optional)
     local password=""
     local user_shell=""
 
@@ -20,7 +21,6 @@ add_user() {
 
     # Determine shell to use (priority: explicit path > role > default)
     if [ -n "$shell_path" ]; then
-        # Admin provided explicit shell path
         if validate_shell_path "$shell_path"; then
             user_shell="$shell_path"
             echo "INFO: Using explicitly specified shell: $user_shell"
@@ -29,7 +29,6 @@ add_user() {
             return 1
         fi
     elif [ -n "$shell_role" ]; then
-        # Admin provided shell role
         user_shell=$(get_shell_for_role "$shell_role")
         if [ -z "$user_shell" ]; then
             echo "ERROR: Invalid shell role: $shell_role"
@@ -38,9 +37,13 @@ add_user() {
         fi
         echo "INFO: Using shell for role '$shell_role': $user_shell"
     else
-        # Use default from config
         user_shell="$DEFAULT_SHELL"
         echo "INFO: Using default shell from config: $user_shell"
+    fi
+
+    # Determine sudo access (priority: explicit flag > default)
+    if [ -z "$sudo_access" ]; then
+        sudo_access="$DEFAULT_SUDO"
     fi
 
     # Determine password to use
@@ -69,6 +72,15 @@ add_user() {
                 fi
             else
                 echo "INFO: Skipping password expiration for nologin user"
+            fi
+            
+            # Handle sudo access
+            if [ "$sudo_access" = "allow" ]; then
+                grant_sudo_access "$username"
+            elif [ "$sudo_access" = "deny" ]; then
+                echo "INFO: Sudo access denied (not adding to sudo group)"
+            else
+                echo "WARNING: Invalid sudo option '$sudo_access', defaulting to deny"
             fi
             
             # Store encrypted password if random was used

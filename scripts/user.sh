@@ -1,27 +1,6 @@
-user_exists() {
-    local username="$1"
-
-    if id "$username" >/dev/null 2>&1; then
-        echo "yes"
-        return 0
-    fi
-
-    echo "no"
-    return 1
-}
-
-add_user() {
-    local username="$1"
-
-    if [ "$(user_exists "$username")" = "yes" ]; then
-        echo "User already exists"
-        return 1
-    fi
-
-    useradd -m "$username"
-    echo "User created"
-}
-
+source ./lib/utils/validation.sh
+source ./lib/user_helper.sh
+source ./lib/user_add.sh
 main() {
     command=""
     username=""
@@ -47,7 +26,6 @@ main() {
         return
     fi
 
-    echo "Usage: $0 --add --name <username>"
 }
 
 main "$@"

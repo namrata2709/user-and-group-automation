@@ -73,11 +73,6 @@ main() {
         fi
         return
     fi
-        elif [[ "$target_type" = "group" ]]; then
-            add_group "$username"   # future function
-            exit $?
-        fi
-    fi
 
     echo "No valid command provided"
     exit 1

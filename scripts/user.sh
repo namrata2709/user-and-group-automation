@@ -11,6 +11,7 @@ else
 fi
 
 source ./lib/utils/validation.sh
+source ./lib/utils/helper.sh
 source ./lib/user_helper.sh
 source ./lib/user_add.sh
 # In future: source ./lib/group_add.sh

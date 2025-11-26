@@ -59,6 +59,7 @@ main() {
     local shell_role=""
     local sudo_access=""
     local primary_group=""
+    local secondary_groups=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -137,6 +138,15 @@ main() {
                 primary_group="$2"
                 shift
                 ;;
+            
+            --groups|--sgroups)
+                if [[ -z "$2" ]]; then
+                    echo "Error: --groups requires comma-separated group names" >&2
+                    exit 1
+                fi
+                secondary_groups="$2"
+                shift
+                ;;
 
             *)
                 echo "Unknown option: $1" >&2
@@ -148,9 +158,9 @@ main() {
 
     if [ "$command" = "add" ]; then
         if [[ "$target_type" = "user" ]]; then
-            add_user "$username" "$use_random" "$shell_path" "$shell_role" "$sudo_access" "$primary_group"
+            add_user "$username" "$use_random" "$shell_path" "$shell_role" "$sudo_access" "$primary_group" "$secondary_groups"
         elif [[ "$target_type" = "group" ]]; then
-            add_group "$username"  # username variable holds group name for group operations
+            add_group "$username"
         else
             echo "ERROR: Invalid target. Use --add user or --add group"
             return 1

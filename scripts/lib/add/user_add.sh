@@ -1,13 +1,15 @@
 add_user() {
     local username="$1"
-    local use_random="$2"      # "yes" or "no"
-    local shell_path="$3"      # Shell path (optional)
-    local shell_role="$4"      # Shell role (optional)
-    local sudo_access="$5"     # "allow" or "deny" (optional)
-    local primary_group="$6"   # Primary group (optional)
+    local use_random="$2"          # "yes" or "no"
+    local shell_path="$3"          # Shell path (optional)
+    local shell_role="$4"          # Shell role (optional)
+    local sudo_access="$5"         # "allow" or "deny" (optional)
+    local primary_group="$6"       # Primary group (optional)
+    local secondary_groups="$7"    # Secondary groups, comma-separated (optional)
     local password=""
     local user_shell=""
     local group_option=""
+    local groups_option=""
 
     # Validate username
     if ! validate_username "$username"; then
@@ -35,6 +37,36 @@ add_user() {
         echo "INFO: Using primary group: $primary_group"
     else
         echo "INFO: Using default primary group (same as username)"
+    fi
+
+    # Handle secondary groups
+    if [ -n "$secondary_groups" ]; then
+        # Split comma-separated groups and validate each
+        IFS=',' read -ra GROUP_ARRAY <<< "$secondary_groups"
+        local missing_groups=()
+        
+        for group in "${GROUP_ARRAY[@]}"; do
+            # Trim whitespace
+            group=$(echo "$group" | xargs)
+            
+            if [ "$(group_exists "$group")" = "no" ]; then
+                echo "INFO: Secondary group '$group' does not exist, creating..."
+                if add_group "$group"; then
+                    echo "INFO: Secondary group '$group' created"
+                else
+                    missing_groups+=("$group")
+                fi
+            fi
+        done
+        
+        # Check if any groups failed to create
+        if [ ${#missing_groups[@]} -gt 0 ]; then
+            echo "ERROR: Failed to create groups: ${missing_groups[*]}"
+            return 1
+        fi
+        
+        groups_option="-G $secondary_groups"
+        echo "INFO: Adding user to secondary groups: $secondary_groups"
     fi
 
     # Determine shell to use (priority: explicit path > role > default)
@@ -73,8 +105,8 @@ add_user() {
         echo "INFO: Using default password from config"
     fi
 
-    # Create user with determined shell and primary group
-    if useradd -m -s "$user_shell" $group_option "$username"; then
+    # Create user with determined shell, primary group, and secondary groups
+    if useradd -m -s "$user_shell" $group_option $groups_option "$username"; then
         echo "INFO: User account created successfully"
         
         # Set password

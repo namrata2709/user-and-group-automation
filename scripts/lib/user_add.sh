@@ -21,18 +21,26 @@ add_user() {
         echo "INFO: Generated random password for user '$username'"
     else
         password="$DEFAULT_PASSWORD"
+        echo "INFO: Using default password from config"
     fi
 
     # Create user
     if useradd -m "$username"; then
+        echo "INFO: User account created, setting password..."
+        
         # Set password
         echo "$username:$password" | chpasswd
         if [ $? -eq 0 ]; then
+            echo "INFO: Password set successfully"
+            
             # Force password change on first login
             chage -d 0 "$username"
             if [ $? -eq 0 ]; then
+                echo "INFO: Password expiration configured"
+                
                 # Store encrypted password if random was used
                 if [ "$use_random" = "yes" ]; then
+                    echo "INFO: Storing encrypted password..."
                     store_encrypted_password "$username" "$password"
                 fi
                 

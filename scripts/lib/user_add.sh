@@ -18,8 +18,16 @@ add_user() {
         # Set default password from config
         echo "$username:$DEFAULT_PASSWORD" | chpasswd
         if [ $? -eq 0 ]; then
-            echo "SUCCESS: User '$username' created with default password"
-            return 0
+            # Force password change on first login
+            chage -d 0 "$username"
+            if [ $? -eq 0 ]; then
+                echo "SUCCESS: User '$username' created with default password"
+                echo "INFO: User must change password on first login"
+                return 0
+            else
+                echo "WARNING: User created but password expiration failed"
+                return 1
+            fi
         else
             echo "WARNING: User '$username' created but password setting failed"
             return 1

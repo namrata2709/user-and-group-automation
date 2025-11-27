@@ -191,4 +191,4 @@ main() {
     exit 1
 }
 
-main "$@"s
+main "$@"

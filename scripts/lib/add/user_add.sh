@@ -1,13 +1,14 @@
 add_user() {
     local username="$1"
-    local use_random="$2"
-    local shell_value="$3"
-    local sudo_input="$4"
-    local primary_group="$5"
-    local secondary_groups="$6"
-    local password_expiry="$7"
-    local password_warning="$8"
-    local account_expiry="$9"
+    local comment="$2"
+    local use_random="$3"
+    local shell_value="$4"
+    local sudo_input="$5"
+    local primary_group="$6"
+    local secondary_groups="$7"
+    local password_expiry="$8"
+    local password_warning="$9"
+    local account_expiry="${10}"
     
     # Variables that will be set by role or explicit values
     local user_shell=""
@@ -31,6 +32,11 @@ add_user() {
     # Validate username
     if ! validate_username "$username"; then
         echo "ERROR: Invalid username format"
+        return 1
+    fi
+
+    # Validate comment
+    if ! validate_comment "$comment"; then
         return 1
     fi
     
@@ -163,7 +169,7 @@ add_user() {
         expiry_option="-e $expiry_date"
     fi
     
-    if useradd -m -s "$user_shell" $group_option $groups_option $expiry_option "$username"; then
+    if useradd -m -c "$comment" -s "$user_shell" $group_option $groups_option $expiry_option "$username"; then
         echo "INFO: User account created successfully"
         
         echo "$username:$password" | chpasswd

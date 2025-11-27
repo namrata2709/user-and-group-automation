@@ -33,6 +33,7 @@ main() {
     local command=""
     local target_type=""
     local username=""
+    local comment=""
     local use_random="no"
     local shell_value=""
     local sudo_access=""
@@ -68,6 +69,15 @@ main() {
                     exit 1
                 fi
                 username="$2"
+                shift
+                ;;
+
+            --comment)
+                if [[ -z "$2" ]]; then
+                    echo "Error: --comment requires an argument" >&2
+                    exit 1
+                fi
+                comment="$2"
                 shift
                 ;;
             
@@ -156,7 +166,7 @@ main() {
 
     if [ "$command" = "add" ]; then
         if [[ "$target_type" = "user" ]]; then
-            add_user "$username" "$use_random" "$shell_value" "$sudo_access" "$primary_group" "$secondary_groups" "$password_expiry" "$password_warning" "$account_expiry"
+            add_user "$username" "$comment" "$use_random" "$shell_value" "$sudo_access" "$primary_group" "$secondary_groups" "$password_expiry" "$password_warning" "$account_expiry"
         elif [[ "$target_type" = "group" ]]; then
             add_group "$username"
         else

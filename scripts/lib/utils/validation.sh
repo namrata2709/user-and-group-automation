@@ -46,3 +46,29 @@ is_valid_role() {
             ;;
     esac
 }
+
+# Validate comment format
+# Arguments:
+#   $1 - Comment string
+# Returns:
+#   0 if valid, 1 if not
+# Requires:
+#   Comment string in format 'firstname lastname:department'
+# Example:
+#   validate_comment "John Doe:Sales"
+validate_comment() {
+    local comment="$1"
+
+    if [ -z "$comment" ]; then
+        echo "ERROR: Comment is required. Format: 'firstname lastname:department'"
+        return 1
+    fi
+
+    if ! [[ "$comment" =~ ^[a-zA-Z'.-]+[[:space:]][a-zA-Z'.-]+:[a-zA-Z0-9_.-[:space:]]+$ ]]; then
+        echo "ERROR: Invalid comment format. Expected 'firstname lastname:department'."
+        echo "Example: 'John Doe:Sales'"
+        return 1
+    fi
+
+    return 0
+}

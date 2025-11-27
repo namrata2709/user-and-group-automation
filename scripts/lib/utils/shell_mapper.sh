@@ -1,18 +1,5 @@
 #!/bin/bash
 
-# ================================================
-# Shell Role Mapper
-# File: lib/utils/shell_mapper.sh
-# ================================================
-
-# ================================================
-# Get shell path based on role
-# ================================================
-# Arguments:
-#   $1 - Role name (admin, developer, support, intern, manager)
-# Returns:
-#   Shell path or empty string if invalid role
-# ================================================
 get_shell_for_role() {
     local role="$1"
     
@@ -37,6 +24,10 @@ get_shell_for_role() {
             echo "$SHELL_ROLE_MANAGER"
             return 0
             ;;
+        contractor)
+            echo "$SHELL_ROLE_CONTRACTOR"
+            return 0
+            ;;
         *)
             echo ""
             return 1
@@ -44,14 +35,20 @@ get_shell_for_role() {
     esac
 }
 
-# ================================================
-# Validate shell path exists on system
-# ================================================
-# Arguments:
-#   $1 - Shell path
-# Returns:
-#   0 if valid, 1 if not
-# ================================================
+validate_shell_path() {
+    local shell_path="$1"
+    
+    if [ -z "$shell_path" ]; then
+        return 1
+    fi
+    
+    if [ -x "$shell_path" ]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
 validate_shell_path() {
     local shell_path="$1"
     

@@ -1,19 +1,25 @@
 add_user() {
     local username="$1"
     local use_random="$2"
-    local shell_path="$3"
-    local shell_role="$4"
-    local sudo_access="$5"
-    local primary_group="$6"
-    local secondary_groups="$7"
-    local password_expiry="$8"    # Days until password expires (optional)
-    local password_warning="$9"   # Warning days before expiry (optional)
-    local password=""
+    local shell_value="$3"
+    local sudo_input="$4"
+    local primary_group="$5"
+    local secondary_groups="$6"
+    local password_expiry="$7"
+    local password_warning="$8"
+    local account_expiry="$9"
+    
+    # Variables that will be set by role or explicit values
     local user_shell=""
+    local sudo_access=""
+    local account_expiry_days=""
+    local expiry_date=""
+    
+    local password=""
     local group_option=""
     local groups_option=""
 
-    # Use defaults if not specified
+    # Defaults
     if [ -z "$password_expiry" ]; then
         password_expiry="$PASSWORD_EXPIRY_DAYS"
     fi
@@ -28,7 +34,6 @@ add_user() {
         return 1
     fi
     
-    # Check if user exists
     if [ "$(user_exists "$username")" = "yes" ]; then
         echo "ERROR: User '$username' already exists"
         return 1
@@ -76,80 +81,111 @@ add_user() {
         echo "INFO: Adding user to secondary groups: $secondary_groups"
     fi
 
-    # Determine shell
-    if [ -n "$shell_path" ]; then
-        if validate_shell_path "$shell_path"; then
-            user_shell="$shell_path"
-            echo "INFO: Using explicitly specified shell: $user_shell"
+    # Set sudo_access from input if provided
+    sudo_access="$sudo_input"
+
+    # Determine shell - detect if role and apply all defaults
+    if [ -n "$shell_value" ]; then
+        if validate_shell_path "$shell_value"; then
+            # It's a valid path
+            user_shell="$shell_value"
+            echo "INFO: Using shell path: $user_shell"
+            
+            # Use defaults for other settings
+            if [ -z "$sudo_access" ]; then
+                sudo_access="$DEFAULT_SUDO"
+            fi
+        elif is_valid_role "$shell_value"; then
+            # It's a role - apply all role defaults
+            apply_role_defaults "$shell_value"
         else
-            echo "ERROR: Invalid or non-existent shell path: $shell_path"
+            echo "ERROR: Invalid shell. Not a valid path or role"
+            echo "Valid roles: admin, developer, support, intern, manager, contractor"
             return 1
         fi
-    elif [ -n "$shell_role" ]; then
-        user_shell=$(get_shell_for_role "$shell_role")
-        if [ -z "$user_shell" ]; then
-            echo "ERROR: Invalid shell role: $shell_role"
-            echo "Valid roles: admin, developer, support, intern, manager"
-            return 1
-        fi
-        echo "INFO: Using shell for role '$shell_role': $user_shell"
     else
+        # No shell specified, use defaults
         user_shell="$DEFAULT_SHELL"
-        echo "INFO: Using default shell from config: $user_shell"
+        sudo_access="${sudo_access:-$DEFAULT_SUDO}"
+        echo "INFO: Using default shell: $user_shell"
     fi
 
-    # Determine sudo access
-    if [ -z "$sudo_access" ]; then
-        sudo_access="$DEFAULT_SUDO"
+    # Parse account_expiry - can override role default
+    if [ -n "$account_expiry" ]; then
+        if [[ "$account_expiry" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+            # Date format
+            expiry_date="$account_expiry"
+            echo "INFO: Using explicit expiry date: $expiry_date"
+        elif [[ "$account_expiry" =~ ^[0-9]+$ ]]; then
+            # Number of days
+            if [ "$account_expiry" -eq 0 ]; then
+                echo "INFO: Account will never expire"
+            else
+                expiry_date=$(date -d "+${account_expiry} days" +%Y-%m-%d)
+                echo "INFO: Account expires in $account_expiry days (on $expiry_date)"
+            fi
+        elif is_valid_role "$account_expiry"; then
+            # Role name - get expiry for that role
+            apply_role_defaults "$account_expiry"
+            if [ -n "$account_expiry_days" ] && [ "$account_expiry_days" != "0" ]; then
+                expiry_date=$(date -d "+${account_expiry_days} days" +%Y-%m-%d)
+                echo "INFO: Using role '$account_expiry' expiry: $account_expiry_days days (on $expiry_date)"
+            fi
+        else
+            echo "ERROR: Invalid expiry value: $account_expiry"
+            return 1
+        fi
+    else
+        # Use role-based expiry if set
+        if [ -n "$account_expiry_days" ] && [ "$account_expiry_days" != "0" ]; then
+            expiry_date=$(date -d "+${account_expiry_days} days" +%Y-%m-%d)
+            echo "INFO: Account expires in $account_expiry_days days (on $expiry_date)"
+        elif [ -n "$DEFAULT_ACCOUNT_EXPIRY" ] && [ "$DEFAULT_ACCOUNT_EXPIRY" != "0" ]; then
+            expiry_date=$(date -d "+${DEFAULT_ACCOUNT_EXPIRY} days" +%Y-%m-%d)
+            echo "INFO: Using default account expiry: $DEFAULT_ACCOUNT_EXPIRY days"
+        else
+            echo "INFO: Account will never expire"
+        fi
     fi
 
     # Determine password
     if [ "$use_random" = "yes" ]; then
         password=$(generate_random_password)
-        echo "INFO: Generated random password for user '$username'"
+        echo "INFO: Generated random password"
     else
         password="$DEFAULT_PASSWORD"
-        echo "INFO: Using default password from config"
+        echo "INFO: Using default password"
     fi
 
     # Create user
-    if useradd -m -s "$user_shell" $group_option $groups_option "$username"; then
+    local expiry_option=""
+    if [ -n "$expiry_date" ]; then
+        expiry_option="-e $expiry_date"
+    fi
+    
+    if useradd -m -s "$user_shell" $group_option $groups_option $expiry_option "$username"; then
         echo "INFO: User account created successfully"
         
-        # Set password
         echo "$username:$password" | chpasswd
         if [ $? -eq 0 ]; then
             echo "INFO: Password set successfully"
             
-            # Configure password policies (skip for nologin users)
             if [ "$user_shell" != "/usr/sbin/nologin" ] && [ "$user_shell" != "/sbin/nologin" ]; then
-                # Force password change on first login
                 chage -d 0 "$username"
-                
-                # Set password expiry and warning
                 chage -M "$password_expiry" -W "$password_warning" "$username"
-                
-                if [ $? -eq 0 ]; then
-                    echo "INFO: Password must be changed on first login"
-                    echo "INFO: Password expires every $password_expiry days"
-                    echo "INFO: Warning $password_warning days before expiry"
-                fi
+                echo "INFO: Password must be changed on first login"
+                echo "INFO: Password expires every $password_expiry days"
             else
                 echo "INFO: Skipping password policies for nologin user"
             fi
             
-            # Handle sudo access
             if [ "$sudo_access" = "allow" ]; then
                 grant_sudo_access "$username"
-            elif [ "$sudo_access" = "deny" ]; then
-                echo "INFO: Sudo access denied"
             else
-                echo "WARNING: Invalid sudo option '$sudo_access', defaulting to deny"
+                echo "INFO: Sudo access denied"
             fi
             
-            # Store encrypted password if random
             if [ "$use_random" = "yes" ]; then
-                echo "INFO: Storing encrypted password..."
                 store_encrypted_password "$username" "$password"
             fi
             

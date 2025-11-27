@@ -1,14 +1,4 @@
 #!/usr/bin/env bash
-
-# ================================================
-# User Management System - Main Entry Point
-# File: user.sh
-# Version: 1.0
-# ================================================
-
-# ================================================
-# Check if running as root
-# ================================================
 if [ "$EUID" -ne 0 ]; then
     echo "ERROR: This script must be run as root"
     echo "Usage: sudo $0 [options]"
@@ -17,10 +7,6 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_MARKER="/opt/admin_dashboard/.installed"
-
-# ================================================
-# Check if system is initialized
-# ================================================
 if [ ! -f "$INSTALL_MARKER" ]; then
     echo "ERROR: System not initialized"
     echo ""
@@ -29,39 +15,32 @@ if [ ! -f "$INSTALL_MARKER" ]; then
     echo ""
     exit 1
 fi
-
-# Source configuration
 CONFIG_FILE="/opt/admin_dashboard/config/user_mgmt.conf"
-
 if [ -f "$CONFIG_FILE" ]; then
     source "$CONFIG_FILE"
 else
     echo "ERROR: Configuration file not found: $CONFIG_FILE"
     exit 1
 fi
-
-# Source library files
 source "$SCRIPT_DIR/lib/utils/validation.sh"
+source "$SCRIPT_DIR/lib/utils/role_validator.sh"
 source "$SCRIPT_DIR/lib/utils/helpers.sh"
-source "$SCRIPT_DIR/lib/utils/shell_mapper.sh"
 source "$SCRIPT_DIR/lib/utils/sudo_manager.sh"
 source "$SCRIPT_DIR/lib/helpers/existence_check.sh"
 source "$SCRIPT_DIR/lib/add/user_add.sh"
 source "$SCRIPT_DIR/lib/add/group_add.sh"
-
-# Rest of your main() function stays the same...
 main() {
     local command=""
     local target_type=""
     local username=""
     local use_random="no"
-    local shell_path=""
-    local shell_role=""
+    local shell_value=""
     local sudo_access=""
     local primary_group=""
     local secondary_groups=""
     local password_expiry=""
     local password_warning=""
+    local account_expiry=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -98,19 +77,10 @@ main() {
             
             --shell)
                 if [[ -z "$2" ]]; then
-                    echo "Error: --shell requires a path argument" >&2
+                    echo "Error: --shell requires a path or role name" >&2
                     exit 1
                 fi
-                shell_path="$2"
-                shift
-                ;;
-            
-            --shell-role)
-                if [[ -z "$2" ]]; then
-                    echo "Error: --shell-role requires an argument" >&2
-                    exit 1
-                fi
-                shell_role="$2"
+                shell_value="$2"
                 shift
                 ;;
             
@@ -166,6 +136,15 @@ main() {
                 password_warning="$2"
                 shift
                 ;;
+            
+            --expire|--account-expiry)
+                if [[ -z "$2" ]]; then
+                    echo "Error: --expire requires days/role/date" >&2
+                    exit 1
+                fi
+                account_expiry="$2"
+                shift
+                ;;
 
             *)
                 echo "Unknown option: $1" >&2
@@ -177,7 +156,7 @@ main() {
 
     if [ "$command" = "add" ]; then
         if [[ "$target_type" = "user" ]]; then
-            add_user "$username" "$use_random" "$shell_path" "$shell_role" "$sudo_access" "$primary_group" "$secondary_groups" "$password_expiry" "$password_warning"
+            add_user "$username" "$use_random" "$shell_value" "$sudo_access" "$primary_group" "$secondary_groups" "$password_expiry" "$password_warning" "$account_expiry"
         elif [[ "$target_type" = "group" ]]; then
             add_group "$username"
         else

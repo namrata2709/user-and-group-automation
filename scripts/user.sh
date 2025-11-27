@@ -60,6 +60,8 @@ main() {
     local sudo_access=""
     local primary_group=""
     local secondary_groups=""
+    local password_expiry=""
+    local password_warning=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -69,7 +71,6 @@ main() {
                     echo "Error: --add requires 'user' or 'group'" >&2
                     exit 1
                 fi
-
                 case "$2" in
                     user|group)
                         target_type="$2"
@@ -147,6 +148,24 @@ main() {
                 secondary_groups="$2"
                 shift
                 ;;
+            
+            --password-expiry|--pexpiry)
+                if [[ -z "$2" ]]; then
+                    echo "Error: --password-expiry requires number of days" >&2
+                    exit 1
+                fi
+                password_expiry="$2"
+                shift
+                ;;
+            
+            --password-warning|--pwarn)
+                if [[ -z "$2" ]]; then
+                    echo "Error: --password-warning requires number of days" >&2
+                    exit 1
+                fi
+                password_warning="$2"
+                shift
+                ;;
 
             *)
                 echo "Unknown option: $1" >&2
@@ -158,11 +177,11 @@ main() {
 
     if [ "$command" = "add" ]; then
         if [[ "$target_type" = "user" ]]; then
-            add_user "$username" "$use_random" "$shell_path" "$shell_role" "$sudo_access" "$primary_group" "$secondary_groups"
+            add_user "$username" "$use_random" "$shell_path" "$shell_role" "$sudo_access" "$primary_group" "$secondary_groups" "$password_expiry" "$password_warning"
         elif [[ "$target_type" = "group" ]]; then
             add_group "$username"
         else
-            echo "ERROR: Invalid target. Use --add user or --add group"
+            echo "ERROR: Invalid target"
             return 1
         fi
         return
@@ -172,4 +191,4 @@ main() {
     exit 1
 }
 
-main "$@"
+main "$@"s

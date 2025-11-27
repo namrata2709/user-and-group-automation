@@ -4,15 +4,24 @@
 validate_username() {
     local username="$1"
 
-    [ -z "$username" ] && return 1
+    if [ -z "$username" ]; then
+        return 1
+    fi
     
     local len=${#username}
-    [ "$len" -gt 32 ] && return 2
     
-    echo "$username" | grep -qE '^[a-z_][a-z0-9_-]*$' || return 3
-    
-    echo "$username" | grep -q '-$' && return 4
-    
+    if [ "$len" -gt 32 ]; then
+        return 1
+    fi
+
+    if ! [[ $username =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+        return 1
+    fi
+
+    if [[ $username == *- ]]; then
+        return 1
+    fi
+
     return 0
 }
 

@@ -41,10 +41,11 @@ parse_xlsx_file() {
     echo "Parsing XLSX file: $file_path"
     echo ""
     
+    
     # Use Python to convert XLSX to pipe-separated format
     local temp_output=$(mktemp)
     
-    python3 << 'PYTHON_SCRIPT' "$file_path" "$temp_output"
+    python3 << PYTHON_SCRIPT "$file_path" "$temp_output"
 import sys
 import openpyxl
 
@@ -82,16 +83,19 @@ try:
                 continue
             
             # Write pipe-separated line
-            f.write(f"{username}|{comment}|{shell}|{sudo}|{pgroup}|{sgroups}|{pexpiry}|{pwarn}|{aexpiry}|{random}\n")
+            f.write("{0}|{1}|{2}|{3}|{4}|{5}|{6}|{7}|{8}|{9}\n".format(
+                username, comment, shell, sudo, pgroup, sgroups, 
+                pexpiry, pwarn, aexpiry, random
+            ))
     
     wb.close()
     sys.exit(0)
     
 except Exception as e:
-    print(f"ERROR: Failed to parse XLSX: {e}", file=sys.stderr)
+    print("ERROR: Failed to parse XLSX: {0}".format(e), file=sys.stderr)
     sys.exit(1)
 PYTHON_SCRIPT
-    
+
     if [ $? -ne 0 ]; then
         rm -f "$temp_output"
         return 1

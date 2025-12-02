@@ -246,6 +246,7 @@ create_directories() {
 # ================================================
 # Initialize log file
 # ================================================
+# Initialize log file
 initialize_log() {
     if [ ! -f "$LOG_FILE" ]; then
         touch "$LOG_FILE"

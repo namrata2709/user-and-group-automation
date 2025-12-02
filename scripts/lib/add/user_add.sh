@@ -19,8 +19,9 @@ add_user() {
     local password=""
     local group_option=""
     local groups_option=""
-
     local safe_comment="${comment//:/ - }"
+    # Log activity start
+    log_activity "Starting user creation for: $username"
     # Defaults
     if [ -z "$password_expiry" ]; then
         password_expiry="$PASSWORD_EXPIRY_DAYS"
@@ -33,14 +34,20 @@ add_user() {
     # Validate username
     if ! validate_username "$username"; then
         echo "ERROR: Invalid username format"
+        log_audit "ADD_USER" "$username" "FAILED" "Invalid username format"
         return 1
     fi
+    
+    log_activity "Username validation passed: $username"
 
+    # Validate comment
     if ! validate_comment "$comment"; then
+        log_audit "ADD_USER" "$username" "FAILED" "Invalid comment format"
         return 1
     fi
     if [ "$(user_exists "$username")" = "yes" ]; then
         echo "ERROR: User '$username' already exists"
+        log_audit "ADD_USER" "$username" "FAILED" "User already exists"
         return 1
     fi
 
@@ -50,6 +57,7 @@ add_user() {
             echo "INFO: Primary group '$primary_group' does not exist, creating..."
             if ! add_group "$primary_group"; then
                 echo "ERROR: Failed to create primary group '$primary_group'"
+                log_audit "ADD_USER" "$username" "FAILED" "Failed to create primary group: $primary_group"
                 return 1
             fi
         fi
@@ -79,6 +87,7 @@ add_user() {
         
         if [ ${#missing_groups[@]} -gt 0 ]; then
             echo "ERROR: Failed to create groups: ${missing_groups[*]}"
+            log_audit "ADD_USER" "$username" "FAILED" "Failed to create secondary groups: ${missing_groups[*]}"
             return 1
         fi
         
@@ -106,6 +115,7 @@ add_user() {
         else
             echo "ERROR: Invalid shell. Not a valid path or role"
             echo "Valid roles: admin, developer, support, intern, manager, contractor"
+            log_audit "ADD_USER" "$username" "FAILED" "Invalid shell value: $shell_value"
             return 1
         fi
     else
@@ -138,6 +148,7 @@ add_user() {
             fi
         else
             echo "ERROR: Invalid expiry value: $account_expiry"
+            log_audit "ADD_USER" "$username" "FAILED" "Invalid expiry value: $account_expiry"
             return 1
         fi
     else
@@ -169,11 +180,12 @@ add_user() {
     fi
     
     if useradd -m -c "$safe_comment" -s "$user_shell" $group_option $groups_option $expiry_option "$username"; then
-        
+        echo "INFO: User account created successfully"
+        log_activity "User account created: $username (Shell: $user_shell, Groups: $primary_group${secondary_groups:+,$secondary_groups})"
         echo "$username:$password" | chpasswd
         if [ $? -eq 0 ]; then
             echo "INFO: Password set successfully"
-            
+            log_activity "Password configured for: $username"
             if [ "$user_shell" != "/usr/sbin/nologin" ] && [ "$user_shell" != "/sbin/nologin" ]; then
                 chage -d 0 "$username"
                 chage -M "$password_expiry" -W "$password_warning" "$username"
@@ -185,18 +197,22 @@ add_user() {
             
             if [ "$sudo_access" = "allow" ]; then
                 grant_sudo_access "$username"
+                log_activity "Sudo access granted to: $username"
             else
                 echo "INFO: Sudo access denied"
             fi
             
             if [ "$use_random" = "yes" ]; then
                 store_encrypted_password "$username" "$password"
+                log_activity "Random password encrypted and stored for: $username"
             fi
             
-            echo "SUCCESS: User '$username' created successfully"
+             echo "SUCCESS: User '$username' created successfully"
+            log_audit "ADD_USER" "$username" "SUCCESS" "User: $username, Shell: $user_shell, Comment: $safe_comment, Expiry: ${expiry_date:-never}, Sudo: $sudo_access"
             return 0
         else
-            echo "WARNING: User created but password setting failed"
+            echo "ERROR: Failed to create user '$username'"
+            log_audit "ADD_USER" "$username" "FAILED" "useradd command failed"
             return 1
         fi
     else

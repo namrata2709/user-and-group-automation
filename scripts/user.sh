@@ -23,6 +23,7 @@ else
     exit 1
 fi
 source "$SCRIPT_DIR/lib/utils/validation.sh"
+source "$SCRIPT_DIR/lib/utils/logging.sh"
 source "$SCRIPT_DIR/lib/utils/role_validator.sh"
 source "$SCRIPT_DIR/lib/utils/helpers.sh"
 source "$SCRIPT_DIR/lib/utils/sudo_manager.sh"

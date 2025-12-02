@@ -35,6 +35,11 @@ source "$SCRIPT_DIR/lib/batch/parsers/text_parser.sh"
 source "$SCRIPT_DIR/lib/batch/parsers/json_parser.sh"
 source "$SCRIPT_DIR/lib/batch/parsers/yaml_parser.sh"
 source "$SCRIPT_DIR/lib/batch/parsers/xlsx_parser.sh"
+source "$SCRIPT_DIR/lib/batch/parsers/group_text_parser.sh"
+source "$SCRIPT_DIR/lib/batch/parsers/group_json_parser.sh"
+source "$SCRIPT_DIR/lib/batch/parsers/group_yaml_parser.sh"
+source "$SCRIPT_DIR/lib/batch/parsers/group_xlsx_parser.sh"
+source "$SCRIPT_DIR/lib/batch/group_batch_processor.sh"
 main() {
     local command=""
     local target_type=""
@@ -209,43 +214,79 @@ main() {
             return 1
         fi
         
-        # Detect file type and call appropriate parser
+        # Detect target type and file extension
         local file_ext="${batch_file##*.}"
-        case "$file_ext" in
-            txt)
-                if ! parse_text_file "$batch_file"; then
-                    return 1
-                fi
-                ;;
-            csv)
-                if ! parse_csv_file "$batch_file"; then
-                    return 1
-                fi
-                ;;
-            json)
-                if ! parse_json_file "$batch_file"; then
-                    return 1
-                fi
-                ;;
-            yaml|yml)
-                if ! parse_yaml_file "$batch_file"; then
-                    return 1
-                fi
-                ;;
-            xlsx)
-                if ! parse_xlsx_file "$batch_file"; then
-                    return 1
-                fi
-                ;;
-            *)
-                echo "ERROR: Unsupported file format: $file_ext"
-                echo "Supported formats: txt, csv, json, yaml, xlsx"
-                return 1
-                ;;
-        esac
         
-        # Process the parsed users
-        if ! process_batch_users BATCH_USERS "$batch_file"; then
+        if [[ "$target_type" = "user" ]]; then
+            # User batch add
+            case "$file_ext" in
+                txt|csv)
+                    if ! parse_text_file "$batch_file"; then
+                        return 1
+                    fi
+                    ;;
+                json)
+                    if ! parse_json_file "$batch_file"; then
+                        return 1
+                    fi
+                    ;;
+                yaml|yml)
+                    if ! parse_yaml_file "$batch_file"; then
+                        return 1
+                    fi
+                    ;;
+                xlsx)
+                    if ! parse_xlsx_file "$batch_file"; then
+                        return 1
+                    fi
+                    ;;
+                *)
+                    echo "ERROR: Unsupported file format: $file_ext"
+                    echo "Supported formats: txt, csv, json, yaml, xlsx"
+                    return 1
+                    ;;
+            esac
+            
+            if ! process_batch_users; then
+                return 1
+            fi
+            
+        elif [[ "$target_type" = "group" ]]; then
+            # Group batch add
+            case "$file_ext" in
+                txt|csv)
+                    if ! parse_group_text_file "$batch_file"; then
+                        return 1
+                    fi
+                    ;;
+                json)
+                    if ! parse_group_json_file "$batch_file"; then
+                        return 1
+                    fi
+                    ;;
+                yaml|yml)
+                    if ! parse_group_yaml_file "$batch_file"; then
+                        return 1
+                    fi
+                    ;;
+                xlsx)
+                    if ! parse_group_xlsx_file "$batch_file"; then
+                        return 1
+                    fi
+                    ;;
+                *)
+                    echo "ERROR: Unsupported file format: $file_ext"
+                    echo "Supported formats: txt, csv, json, yaml, xlsx"
+                    return 1
+                    ;;
+            esac
+            
+            if ! process_batch_groups; then
+                return 1
+            fi
+            
+        else
+            echo "ERROR: Invalid target type for batch-add"
             return 1
         fi
         

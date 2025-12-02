@@ -52,9 +52,10 @@ parse_text_file() {
         # Trim whitespace
         line=$(echo "$line" | xargs)
         
-        # Check if CSV format (contains comma)
         if [[ "$line" =~ , ]]; then
-            # CSV format: username,comment,shell,sudo,pgroup,sgroups,pexpiry,pwarn,aexpiry,random
+            # CSV format: username,comment[,shell,sudo,pgroup,sgroups,pexpiry,pwarn,aexpiry,random]
+            # Minimum: username,comment
+            # Full: username,comment,shell,sudo,pgroup,sgroups,pexpiry,pwarn,aexpiry,random
             IFS=',' read -r username comment shell sudo pgroup sgroups pexpiry pwarn aexpiry random <<< "$line"
             
             # Trim each field
@@ -80,27 +81,19 @@ parse_text_file() {
                 continue
             fi
             
-        else
-            # Simple format: just username
-            username="$line"
-            
-            if [ -z "$username" ]; then
-                echo "WARNING: Line $line_num - Empty username, skipping"
-                continue
+            # Optional fields default to empty (add_user will use config defaults)
+            # If random is empty, default to "no"
+            if [ -z "$random" ]; then
+                random="no"
             fi
             
-            # Generate default comment
-            comment="$username User:General"
-            
-            # Use empty values for other fields (will use defaults)
-            shell=""
-            sudo=""
-            pgroup=""
-            sgroups=""
-            pexpiry=""
-            pwarn=""
-            aexpiry=""
-            random="no"
+       else
+            # No comma found - invalid format
+            echo "WARNING: Line $line_num - Invalid format, skipping"
+            echo "         Expected: username,comment[,optional fields]"
+            echo "         Example: alice,Alice Smith:Engineering"
+            echo "         Example: bob,Bob Jones:IT,developer,allow,devs,docker,90,7,365,yes"
+            continue
         fi
         
         # Add to batch array (pipe-separated format)

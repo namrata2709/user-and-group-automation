@@ -57,7 +57,7 @@ add_user() {
         password_warning="$PASSWORD_WARN_DAYS"
     fi
 
-    # ================================================
+     # ================================================
     # VALIDATION - Only if NOT trusted
     # ================================================
     if [ "$trusted" != "yes" ]; then

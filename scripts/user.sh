@@ -31,6 +31,7 @@ source "$SCRIPT_DIR/lib/helpers/existence_check.sh"
 source "$SCRIPT_DIR/lib/add/user_add.sh"
 source "$SCRIPT_DIR/lib/add/group_add.sh"
 source "$SCRIPT_DIR/lib/batch/batch_processor.sh"
+source "$SCRIPT_DIR/lib/batch/parsers/text_parser.sh"
 main() {
     local command=""
     local target_type=""
@@ -44,6 +45,7 @@ main() {
     local password_expiry=""
     local password_warning=""
     local account_expiry=""
+    local batch_file=""
     
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -157,11 +159,26 @@ main() {
                 account_expiry="$2"
                 shift
                 ;;
-            --batch-test)
-                # Test batch processor
-                mkdir -p "$SCRIPT_DIR/lib/batch"
-                test_batch_processor
-                exit $?
+            --batch-add|--batch)
+                command="batch_add"
+                if [[ -z "$2" ]]; then
+                    echo "Error: --batch-add requires --file argument" >&2
+                    exit 1
+                fi
+                shift
+                ;;
+            
+            --file)
+                if [[ -z "$2" ]]; then
+                    echo "Error: --file requires a file path" >&2
+                    exit 1
+                fi
+                if [[ ! -f "$2" ]]; then
+                    echo "Error: File not found: $2" >&2
+                    exit 1
+                fi
+                batch_file="$2"
+                shift
                 ;;
 
             *)
@@ -183,7 +200,49 @@ main() {
         fi
         return
     fi
-
+    if [ "$command" = "batch_add" ]; then
+        if [[ -z "$batch_file" ]]; then
+            echo "ERROR: --file argument required for batch operations"
+            return 1
+        fi
+        
+        # Detect file type and parse
+        local file_ext="${batch_file##*.}"
+        
+        case "$file_ext" in
+            txt)
+                if ! parse_text_file "$batch_file"; then
+                    echo "ERROR: Failed to parse text file"
+                    return 1
+                fi
+                ;;
+            csv)
+                echo "ERROR: CSV parser not yet implemented"
+                return 1
+                ;;
+            json)
+                echo "ERROR: JSON parser not yet implemented"
+                return 1
+                ;;
+            yaml|yml)
+                echo "ERROR: YAML parser not yet implemented"
+                return 1
+                ;;
+            xlsx)
+                echo "ERROR: XLSX parser not yet implemented"
+                return 1
+                ;;
+            *)
+                echo "ERROR: Unsupported file type: .$file_ext"
+                echo "Supported: .txt, .csv, .json, .yaml, .xlsx"
+                return 1
+                ;;
+        esac
+        
+        # Run batch processor
+        process_batch_users
+        return $?
+    fi
     echo "No valid command provided"
     exit 1
 }

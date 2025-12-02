@@ -47,22 +47,6 @@ is_valid_role() {
     esac
 }
 
-# Validate comment format
-# Arguments:
-#   $1 - Comment string
-# Returns:
-#   0 if valid, 1 if not
-# Requires:
-#   Comment string in format 'firstname lastname:department'
-# Example:
-#   validate_comment "John Doe:Sales"
-#
-# Checks for:
-#   - Comment is not empty
-#   - Colon separator is present
-#   - Name and department parts are not empty
-#   - Name part contains at least one space
-#   - Name part does not start or end with a space
 validate_comment() {
     local comment="$1"
 

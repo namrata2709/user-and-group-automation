@@ -35,11 +35,9 @@ add_user() {
         return 1
     fi
 
-    # Validate comment
     if ! validate_comment "$comment"; then
         return 1
     fi
-    
     if [ "$(user_exists "$username")" = "yes" ]; then
         echo "ERROR: User '$username' already exists"
         return 1

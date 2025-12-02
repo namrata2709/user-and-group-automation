@@ -213,12 +213,16 @@ main() {
                 fi
                 ;;
             csv)
-                echo "ERROR: CSV parser not yet implemented"
-                return 1
+                if ! parse_text_file "$batch_file"; then
+                    echo "ERROR: Failed to parse CSV file"
+                    return 1
+                fi
                 ;;
             json)
-                echo "ERROR: JSON parser not yet implemented"
-                return 1
+                if ! parse_json_file "$batch_file"; then
+                    echo "ERROR: Failed to parse JSON file"
+                    return 1
+                fi
                 ;;
             yaml|yml)
                 echo "ERROR: YAML parser not yet implemented"

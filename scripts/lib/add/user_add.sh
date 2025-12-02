@@ -67,7 +67,13 @@ add_user() {
         fi
         log_activity "Input validation passed: $username"
     fi
-
+    # Check if user exists - STOP HERE if exists
+    if [ "$(user_exists "$username")" = "yes" ]; then
+        echo "ERROR: User '$username' already exists"
+        echo "INFO: Use update command to modify existing users"
+        log_audit "ADD_USER" "$username" "FAILED" "User already exists"
+        return 1
+    fi
     # ================================================
     # GROUP HANDLING
     # ================================================

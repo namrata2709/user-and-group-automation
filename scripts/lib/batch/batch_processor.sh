@@ -6,57 +6,34 @@
 # Version: 1.0.0
 # ================================================
 
-# ================================================
-# Generic format structure (for reference):
-# ================================================
-# declare -A user_data=(
-#     [username]="alice"
-#     [comment]="Alice Smith:Engineering"
-#     [shell]="admin"
-#     [sudo]="allow"
-#     [primary_group]="developers"
-#     [secondary_groups]="docker,sudo"
-#     [password_expiry]="90"
-#     [password_warning]="7"
-#     [account_expiry]="365"
-#     [random]="yes"
-# )
-
-# ================================================
-# Process batch users from generic format
-# ================================================
-# Input: Array of user data (via global variable BATCH_USERS)
-# Output: Summary report
-# ================================================
 process_batch_users() {
     local start_time=$(date +%s)
     
-    # Counters
     local total=0
     local created=0
     local skipped=0
     local failed=0
     
-    # Results arrays
     declare -a success_users=()
     declare -a failed_users=()
     declare -a skipped_users=()
+    
+    # Track groups for rollback
+    declare -A created_groups=()
+    declare -A groups_with_users=()
     
     echo "========================================"
     echo "Batch User Creation - Starting"
     echo "========================================"
     echo ""
     
-    # Process each user
     for user_index in "${!BATCH_USERS[@]}"; do
         ((total++))
         
-        # Parse user data (format: "username|comment|shell|sudo|pgroup|sgroups|pexpiry|pwarn|aexpiry|random")
         IFS='|' read -r username comment shell sudo pgroup sgroups pexpiry pwarn aexpiry random <<< "${BATCH_USERS[$user_index]}"
         
         echo "[$total] Processing: $username"
         
-        # Validate input
         if ! validate_user_input "$username" "$comment" "$shell" "$sudo" "$pgroup" "$sgroups" "$pexpiry" "$pwarn" "$aexpiry"; then
             echo "  └─ FAILED: Validation errors"
             ((failed++))
@@ -65,7 +42,6 @@ process_batch_users() {
             continue
         fi
         
-        # Check if user exists (separate from validation for better reporting)
         if [ "$(user_exists "$username")" = "yes" ]; then
             echo "  └─ SKIPPED: User already exists"
             ((skipped++))
@@ -74,11 +50,57 @@ process_batch_users() {
             continue
         fi
         
-        # Create user with trusted flag
+        # Handle primary group
+        if [ -n "$pgroup" ]; then
+            if [ "$(group_exists "$pgroup")" = "no" ]; then
+                if add_group "$pgroup" "yes" >/dev/null 2>&1; then
+                    created_groups["$pgroup"]=1
+                else
+                    echo "  └─ FAILED: Could not create primary group"
+                    ((failed++))
+                    failed_users+=("$username")
+                    echo ""
+                    continue
+                fi
+            fi
+        fi
+        
+        # Handle secondary groups
+        if [ -n "$sgroups" ]; then
+            IFS=',' read -ra GROUP_ARRAY <<< "$sgroups"
+            for group in "${GROUP_ARRAY[@]}"; do
+                group=$(echo "$group" | xargs)
+                
+                if [ "$(group_exists "$group")" = "no" ]; then
+                    if add_group "$group" "yes" >/dev/null 2>&1; then
+                        created_groups["$group"]=1
+                    else
+                        echo "  └─ FAILED: Could not create secondary group"
+                        ((failed++))
+                        failed_users+=("$username")
+                        echo ""
+                        continue 2
+                    fi
+                fi
+            done
+        fi
+        
         if add_user "$username" "$comment" "$random" "$shell" "$sudo" "$pgroup" "$sgroups" "$pexpiry" "$pwarn" "$aexpiry" "yes" >/dev/null 2>&1; then
             echo "  └─ SUCCESS: User created"
             ((created++))
             success_users+=("$username")
+            
+            # Mark groups as having users
+            if [ -n "$pgroup" ]; then
+                groups_with_users["$pgroup"]=1
+            fi
+            if [ -n "$sgroups" ]; then
+                IFS=',' read -ra GROUP_ARRAY <<< "$sgroups"
+                for group in "${GROUP_ARRAY[@]}"; do
+                    group=$(echo "$group" | xargs)
+                    groups_with_users["$group"]=1
+                done
+            fi
         else
             echo "  └─ FAILED: Creation error"
             ((failed++))
@@ -88,11 +110,39 @@ process_batch_users() {
         echo ""
     done
     
-    # Calculate duration
+    # Rollback orphaned groups
+    local orphaned_count=0
+    declare -a orphaned_groups=()
+    
+    if [ ${#created_groups[@]} -gt 0 ]; then
+        echo "========================================"
+        echo "Checking for orphaned groups..."
+        echo "========================================"
+        
+        for group in "${!created_groups[@]}"; do
+            if [ -z "${groups_with_users[$group]}" ]; then
+                local member_count=$(getent group "$group" | awk -F: '{print $4}' | grep -c '.' || echo "0")
+                
+                if [ "$member_count" -eq 0 ]; then
+                    if groupdel "$group" >/dev/null 2>&1; then
+                        echo "Deleted orphaned group: $group"
+                        orphaned_groups+=("$group")
+                        ((orphaned_count++))
+                        log_audit "BATCH_ROLLBACK" "$group" "DELETED" "Orphaned group"
+                    fi
+                fi
+            fi
+        done
+        
+        if [ $orphaned_count -eq 0 ]; then
+            echo "No orphaned groups found"
+        fi
+        echo ""
+    fi
+    
     local end_time=$(date +%s)
     local duration=$((end_time - start_time))
     
-    # Print summary
     echo "========================================"
     echo "Batch Creation Summary"
     echo "========================================"
@@ -100,10 +150,12 @@ process_batch_users() {
     echo "Created:          $created"
     echo "Skipped:          $skipped"
     echo "Failed:           $failed"
+    if [ $orphaned_count -gt 0 ]; then
+        echo "Orphaned Groups:  $orphaned_count (deleted)"
+    fi
     echo "Duration:         ${duration}s"
     echo ""
     
-    # Detailed results
     if [ ${#success_users[@]} -gt 0 ]; then
         echo "Created Users:"
         for user in "${success_users[@]}"; do
@@ -128,12 +180,18 @@ process_batch_users() {
         echo ""
     fi
     
+    if [ ${#orphaned_groups[@]} -gt 0 ]; then
+        echo "Deleted Orphaned Groups:"
+        for group in "${orphaned_groups[@]}"; do
+            echo "  🗑 $group"
+        done
+        echo ""
+    fi
+    
     echo "========================================"
     
-    # Log summary
-    log_audit "BATCH_ADD" "users" "COMPLETED" "Total: $total, Created: $created, Skipped: $skipped, Failed: $failed"
+    log_audit "BATCH_ADD" "users" "COMPLETED" "Total: $total, Created: $created, Skipped: $skipped, Failed: $failed, Orphaned: $orphaned_count"
     
-    # Return status
     if [ $failed -eq 0 ]; then
         return 0
     else
@@ -141,13 +199,9 @@ process_batch_users() {
     fi
 }
 
-# ================================================
-# Validate batch user data structure
-# ================================================
 validate_batch_structure() {
     local user_data="$1"
     
-    # Check format: must have at least username and comment
     if ! [[ "$user_data" =~ \| ]]; then
         echo "ERROR: Invalid format - missing pipe separator"
         return 1
@@ -168,22 +222,3 @@ validate_batch_structure() {
     return 0
 }
 
-# ================================================
-# Test with hardcoded data
-# ================================================
-test_batch_processor() {
-    echo "Testing batch processor with hardcoded data..."
-    echo ""
-    
-    # Global array for batch users
-    declare -g -a BATCH_USERS=(
-        "alice|Alice Smith:Engineering|admin|allow|developers|docker|90|7|365|yes"
-        "bob|Bob Jones:IT|developer|allow|||90|7||no"
-        "charlie|Charlie Brown:Support|support|deny|||||180|no"
-    )
-    
-    # Run processor
-    process_batch_users
-    
-    return $?
-}

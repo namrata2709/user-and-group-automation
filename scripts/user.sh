@@ -169,6 +169,20 @@ main() {
                 ;;
             --batch-add|--batch)
                 command="batch-add"
+                if [[ -z "$2" ]]; then
+                    echo "Error: --batch-add requires 'user' or 'group'" >&2
+                    exit 1
+                fi
+                case "$2" in
+                    user|group)
+                        target_type="$2"
+                        ;;
+                    *)
+                        echo "Error: Unknown target for --batch-add: $2" >&2
+                        exit 1
+                        ;;
+                esac
+                shift
                 ;;
             
             --file)

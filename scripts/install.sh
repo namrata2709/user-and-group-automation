@@ -72,19 +72,21 @@ check_dependencies() {
     print_info "Checking system dependencies..."
     
     local missing_deps=()
-    local required_packages=("openssl" "jq")
+    local missing_python_deps=()
+    local required_packages=("openssl" "jq" "python3")
     
+    # Check system packages
     for pkg in "${required_packages[@]}"; do
         if ! command -v "$pkg" &> /dev/null; then
             missing_deps+=("$pkg")
         fi
     done
     
+    # Install missing system packages
     if [ ${#missing_deps[@]} -gt 0 ]; then
         print_warning "Missing packages: ${missing_deps[*]}"
         print_info "Attempting to install missing packages..."
         
-        # Detect package manager
         if command -v yum &> /dev/null; then
             yum install -y "${missing_deps[@]}"
         elif command -v dnf &> /dev/null; then
@@ -99,7 +101,54 @@ check_dependencies() {
         
         print_success "Dependencies installed"
     else
-        print_success "All dependencies present"
+        print_success "All system dependencies present"
+    fi
+    
+    # Check pip3
+    if ! command -v pip3 &> /dev/null; then
+        print_info "Installing pip3..."
+        
+        if command -v yum &> /dev/null; then
+            yum install -y python3-pip
+        elif command -v dnf &> /dev/null; then
+            dnf install -y python3-pip
+        elif command -v apt-get &> /dev/null; then
+            apt-get install -y python3-pip
+        else
+            print_error "Cannot install pip3"
+            exit 1
+        fi
+    fi
+    
+    # Check Python packages
+    print_info "Checking Python dependencies..."
+    
+    if ! python3 -c "import openpyxl" 2>/dev/null; then
+        missing_python_deps+=("openpyxl")
+    fi
+    
+    # Install missing Python packages
+    if [ ${#missing_python_deps[@]} -gt 0 ]; then
+        print_warning "Missing Python packages: ${missing_python_deps[*]}"
+        print_info "Installing Python packages..."
+        
+        if pip3 install "${missing_python_deps[@]}" &>/dev/null; then
+            print_success "Python packages installed"
+        else
+            print_error "Failed to install Python packages"
+            print_warning "XLSX parsing will not work without openpyxl"
+            echo ""
+            print_info "You can install manually later:"
+            print_info "  sudo pip3 install openpyxl"
+            echo ""
+            read -p "Continue anyway? (yes/no): " -r
+            if [[ ! $REPLY =~ ^[Yy][Ee][Ss]$ ]]; then
+                print_error "Installation aborted"
+                exit 1
+            fi
+        fi
+    else
+        print_success "All Python dependencies present"
     fi
 }
 
@@ -290,8 +339,16 @@ main() {
     print_success "Installation completed successfully!"
     print_success "================================================"
     echo ""
+    print_info "System dependencies installed:"
+    print_info "  ✓ openssl, jq, python3"
+    echo ""
+    print_info "Python packages installed:"
+    print_info "  ✓ openpyxl (for XLSX support)"
+    echo ""
     print_info "You can now use the user management system:"
     print_info "  sudo ./user.sh --add user --name <username>"
+    print_info "  sudo ./user.sh --batch-add --file users.txt"
+    print_info "  sudo ./user.sh --batch-add --file users.xlsx"
     echo ""
 }
 

@@ -1,29 +1,17 @@
 #!/bin/bash
 
 # ================================================
-# XLSX File Parser
+# XLSX File Parser (Python method)
 # File: lib/batch/parsers/xlsx_parser.sh
 # Version: 1.0.0
 # ================================================
-# Converts XLSX to CSV, then parses to generic format
-# Dependencies: ssconvert (from gnumeric package)
+# Dependencies: python3, openpyxl
+# Install: pip3 install openpyxl
 # ================================================
 
-# ================================================
-# Parse XLSX file to generic format
-# ================================================
-# Input: $1 - File path
-# Output: Populates BATCH_USERS array
-# Returns: 0 on success, 1 on failure
-# ================================================
-# Expected XLSX structure:
-# Header row: username, comment, shell, sudo, primary_group, secondary_groups, password_expiry, password_warning, account_expiry, random
-# Data rows: alice, "Alice Smith:Engineering", admin, allow, developers, "docker,sudo", 90, 7, 365, yes
-# ================================================
 parse_xlsx_file() {
     local file_path="$1"
     
-    # File validation
     if [ ! -f "$file_path" ]; then
         echo "ERROR: File not found: $file_path"
         return 1
@@ -34,126 +22,95 @@ parse_xlsx_file() {
         return 1
     fi
     
-    # Check for ssconvert (from gnumeric)
-    if ! command -v ssconvert &> /dev/null; then
-        echo "ERROR: ssconvert is required for XLSX parsing"
-        echo "Install on:"
-        echo "  Amazon Linux/RHEL/CentOS: sudo yum install -y gnumeric"
-        echo "  Ubuntu/Debian: sudo apt install -y gnumeric"
-        echo ""
-        echo "Alternative: Convert XLSX to CSV manually and use CSV parser"
+    # Check Python3
+    if ! command -v python3 &> /dev/null; then
+        echo "ERROR: python3 is required for XLSX parsing"
+        echo "Install: sudo yum install -y python3"
         return 1
     fi
     
-    # Initialize global array
+    # Check openpyxl
+    if ! python3 -c "import openpyxl" 2>/dev/null; then
+        echo "ERROR: openpyxl is required for XLSX parsing"
+        echo "Install: sudo pip3 install openpyxl"
+        return 1
+    fi
+    
     declare -g -a BATCH_USERS=()
     
     echo "Parsing XLSX file: $file_path"
-    echo "Converting XLSX to CSV..."
-    
-    # Create temp CSV file
-    local temp_csv=$(mktemp /tmp/xlsx_parser.XXXXXX.csv)
-    
-    # Convert XLSX to CSV using ssconvert
-    if ! ssconvert -T Gnumeric_stf:stf_csv "$file_path" "$temp_csv" &>/dev/null; then
-        echo "ERROR: Failed to convert XLSX to CSV"
-        rm -f "$temp_csv"
-        return 1
-    fi
-    
-    # Check if temp file was created
-    if [ ! -f "$temp_csv" ]; then
-        echo "ERROR: Conversion failed - CSV file not created"
-        return 1
-    fi
-    
-    echo "Conversion successful, parsing CSV data..."
     echo ""
     
-    # Now parse the CSV file
-    local line_num=0
-    local has_header=0
-    local user_count=0
+    # Use Python to convert XLSX to pipe-separated format
+    local temp_output=$(mktemp)
     
-    while IFS= read -r line || [ -n "$line" ]; do
-        ((line_num++))
-        
-        # Skip empty lines
-        if [ -z "$line" ]; then
-            continue
-        fi
-        
-        # Trim whitespace
-        line=$(echo "$line" | xargs)
-        
-        # Skip header row (check for "username" in first column)
-        if [ $line_num -eq 1 ]; then
-            if [[ "$line" =~ ^username, ]] || [[ "$line" =~ ^\"username\", ]]; then
-                echo "INFO: Header row detected, skipping"
-                has_header=1
+    python3 << 'PYTHON_SCRIPT' "$file_path" "$temp_output"
+import sys
+import openpyxl
+
+xlsx_file = sys.argv[1]
+output_file = sys.argv[2]
+
+try:
+    wb = openpyxl.load_workbook(xlsx_file, data_only=True)
+    ws = wb.active
+    
+    with open(output_file, 'w') as f:
+        for row_idx, row in enumerate(ws.iter_rows(values_only=True), start=1):
+            # Skip header row if it contains "username"
+            if row_idx == 1 and row[0] and str(row[0]).lower() == 'username':
                 continue
-            fi
-        fi
-        
-        # Parse CSV line
-        # Format: username,comment,shell,sudo,primary_group,secondary_groups,password_expiry,password_warning,account_expiry,random
-        IFS=',' read -r username comment shell sudo pgroup sgroups pexpiry pwarn aexpiry random <<< "$line"
-        
-        # Remove quotes and trim each field
-        username=$(echo "$username" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/^"\(.*\)"$/\1/')
-        comment=$(echo "$comment" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/^"\(.*\)"$/\1/')
-        shell=$(echo "$shell" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/^"\(.*\)"$/\1/')
-        sudo=$(echo "$sudo" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/^"\(.*\)"$/\1/')
-        pgroup=$(echo "$pgroup" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/^"\(.*\)"$/\1/')
-        sgroups=$(echo "$sgroups" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/^"\(.*\)"$/\1/')
-        pexpiry=$(echo "$pexpiry" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/^"\(.*\)"$/\1/')
-        pwarn=$(echo "$pwarn" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/^"\(.*\)"$/\1/')
-        aexpiry=$(echo "$aexpiry" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/^"\(.*\)"$/\1/')
-        random=$(echo "$random" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/^"\(.*\)"$/\1/')
-        
-        # Validate required fields
-        if [ -z "$username" ]; then
-            echo "WARNING: Line $line_num - Empty username, skipping"
-            continue
-        fi
-        
-        if [ -z "$comment" ]; then
-            echo "WARNING: Line $line_num - Empty comment for user '$username', skipping"
-            continue
-        fi
-        
-        # Set default for random
-        if [ -z "$random" ]; then
-            random="no"
-        fi
-        
-        # Add to batch array (pipe-separated format)
-        BATCH_USERS+=("$username|$comment|$shell|$sudo|$pgroup|$sgroups|$pexpiry|$pwarn|$aexpiry|$random")
+            
+            # Skip empty rows
+            if not row[0]:
+                continue
+            
+            # Extract fields (handle None values)
+            username = str(row[0]).strip() if row[0] else ""
+            comment = str(row[1]).strip() if len(row) > 1 and row[1] else ""
+            shell = str(row[2]).strip() if len(row) > 2 and row[2] else ""
+            sudo = str(row[3]).strip() if len(row) > 3 and row[3] else ""
+            pgroup = str(row[4]).strip() if len(row) > 4 and row[4] else ""
+            sgroups = str(row[5]).strip() if len(row) > 5 and row[5] else ""
+            pexpiry = str(row[6]).strip() if len(row) > 6 and row[6] else ""
+            pwarn = str(row[7]).strip() if len(row) > 7 and row[7] else ""
+            aexpiry = str(row[8]).strip() if len(row) > 8 and row[8] else ""
+            random = str(row[9]).strip() if len(row) > 9 and row[9] else "no"
+            
+            # Validate required fields
+            if not username or not comment:
+                continue
+            
+            # Write pipe-separated line
+            f.write(f"{username}|{comment}|{shell}|{sudo}|{pgroup}|{sgroups}|{pexpiry}|{pwarn}|{aexpiry}|{random}\n")
+    
+    wb.close()
+    sys.exit(0)
+    
+except Exception as e:
+    print(f"ERROR: Failed to parse XLSX: {e}", file=sys.stderr)
+    sys.exit(1)
+PYTHON_SCRIPT
+    
+    if [ $? -ne 0 ]; then
+        rm -f "$temp_output"
+        return 1
+    fi
+    
+    # Read parsed data
+    local user_count=0
+    while IFS= read -r line; do
+        BATCH_USERS+=("$line")
         ((user_count++))
-        
-    done < "$temp_csv"
+    done < "$temp_output"
     
-    # Cleanup temp file
-    rm -f "$temp_csv"
+    rm -f "$temp_output"
     
-    local count=${#BATCH_USERS[@]}
-    echo "Parsed $count users from XLSX file"
+    echo "Parsed $user_count users from XLSX file"
     echo ""
     
-    if [ $count -eq 0 ]; then
+    if [ $user_count -eq 0 ]; then
         echo "ERROR: No valid users found in file"
-        echo ""
-        echo "Expected XLSX format (with or without header row):"
-        echo "Column A: username"
-        echo "Column B: comment (format: \"Firstname Lastname:Department\")"
-        echo "Column C: shell (optional)"
-        echo "Column D: sudo (optional)"
-        echo "Column E: primary_group (optional)"
-        echo "Column F: secondary_groups (optional, comma-separated)"
-        echo "Column G: password_expiry (optional)"
-        echo "Column H: password_warning (optional)"
-        echo "Column I: account_expiry (optional)"
-        echo "Column J: random (optional, yes/no)"
         return 1
     fi
     

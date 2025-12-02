@@ -245,7 +245,7 @@ main() {
         esac
         
         # Process the parsed users
-        if ! process_batch BATCH_USERS "$batch_file"; then
+        if ! process_batch_users BATCH_USERS "$batch_file"; then
             return 1
         fi
         

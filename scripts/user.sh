@@ -161,11 +161,6 @@ main() {
                 ;;
             --batch-add|--batch)
                 command="batch_add"
-                if [[ -z "$2" ]]; then
-                    echo "Error: --batch-add requires --file argument" >&2
-                    exit 1
-                fi
-                shift
                 ;;
             
             --file)
@@ -173,11 +168,11 @@ main() {
                     echo "Error: --file requires a file path" >&2
                     exit 1
                 fi
-                if [[ ! -f "$2" ]]; then
-                    echo "Error: File not found: $2" >&2
+                batch_file="$2"
+                if [[ ! -f "$batch_file" ]]; then
+                    echo "Error: File not found: $batch_file" >&2
                     exit 1
                 fi
-                batch_file="$2"
                 shift
                 ;;
 

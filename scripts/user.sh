@@ -163,7 +163,7 @@ main() {
                 shift
                 ;;
             --batch-add|--batch)
-                command="batch_add"
+                command="batch-add"
                 ;;
             
             --file)

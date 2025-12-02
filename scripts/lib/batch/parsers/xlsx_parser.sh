@@ -45,7 +45,7 @@ parse_xlsx_file() {
     # Use Python to convert XLSX to pipe-separated format
     local temp_output=$(mktemp)
     
-    python3 << PYTHON_SCRIPT "$file_path" "$temp_output"
+    cat << 'EOF' > "$temp_script"
 import sys
 import openpyxl
 
@@ -94,7 +94,10 @@ try:
 except Exception as e:
     print("ERROR: Failed to parse XLSX: {0}".format(e), file=sys.stderr)
     sys.exit(1)
-PYTHON_SCRIPT
+EOF
+
+python3 "$temp_script" "$file_path" "$temp_output"
+rm -f "$temp_script"
 
     if [ $? -ne 0 ]; then
         rm -f "$temp_output"

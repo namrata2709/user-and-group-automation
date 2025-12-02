@@ -1,14 +1,5 @@
 #!/bin/bash
 
-# ================================================
-# XLSX File Parser (Python method)
-# File: lib/batch/parsers/xlsx_parser.sh
-# Version: 1.0.0
-# ================================================
-# Dependencies: python3, openpyxl
-# Install: pip3 install openpyxl
-# ================================================
-
 parse_xlsx_file() {
     local file_path="$1"
     
@@ -22,104 +13,85 @@ parse_xlsx_file() {
         return 1
     fi
     
-    # Check Python3
     if ! command -v python3 &> /dev/null; then
         echo "ERROR: python3 is required for XLSX parsing"
         echo "Install: sudo yum install -y python3"
         return 1
     fi
     
-    # Check openpyxl
     if ! python3 -c "import openpyxl" 2>/dev/null; then
         echo "ERROR: openpyxl is required for XLSX parsing"
         echo "Install: sudo pip3 install openpyxl"
         return 1
     fi
     
-    declare -g -a BATCH_USERS=()
-    
     echo "Parsing XLSX file: $file_path"
     echo ""
     
+    local temp_csv=$(mktemp --suffix=.csv)
+    local temp_script=$(mktemp --suffix=.py)
     
-    # Use Python to convert XLSX to pipe-separated format
-    local temp_output=$(mktemp)
-    
-    cat << 'EOF' > "$temp_script"
+    cat << 'PYTHON_SCRIPT' > "$temp_script"
 import sys
 import openpyxl
 
 xlsx_file = sys.argv[1]
-output_file = sys.argv[2]
+csv_file = sys.argv[2]
 
 try:
     wb = openpyxl.load_workbook(xlsx_file, data_only=True)
     ws = wb.active
     
-    with open(output_file, 'w') as f:
+    with open(csv_file, 'w') as f:
         for row_idx, row in enumerate(ws.iter_rows(values_only=True), start=1):
-            # Skip header row if it contains "username"
             if row_idx == 1 and row[0] and str(row[0]).lower() == 'username':
                 continue
             
-            # Skip empty rows
             if not row[0]:
                 continue
             
-            # Extract fields (handle None values)
-            username = str(row[0]).strip() if row[0] else ""
-            comment = str(row[1]).strip() if len(row) > 1 and row[1] else ""
-            shell = str(row[2]).strip() if len(row) > 2 and row[2] else ""
-            sudo = str(row[3]).strip() if len(row) > 3 and row[3] else ""
-            pgroup = str(row[4]).strip() if len(row) > 4 and row[4] else ""
-            sgroups = str(row[5]).strip() if len(row) > 5 and row[5] else ""
-            pexpiry = str(row[6]).strip() if len(row) > 6 and row[6] else ""
-            pwarn = str(row[7]).strip() if len(row) > 7 and row[7] else ""
-            aexpiry = str(row[8]).strip() if len(row) > 8 and row[8] else ""
-            random = str(row[9]).strip() if len(row) > 9 and row[9] else "no"
+            cells = []
+            for cell in row[:10]:
+                if cell is None:
+                    cells.append('')
+                else:
+                    cell_str = str(cell).strip()
+                    if ',' in cell_str or '"' in cell_str:
+                        cell_str = '"' + cell_str.replace('"', '""') + '"'
+                    cells.append(cell_str)
             
-            # Validate required fields
-            if not username or not comment:
-                continue
-            
-            # Write pipe-separated line
-            f.write("{0}|{1}|{2}|{3}|{4}|{5}|{6}|{7}|{8}|{9}\n".format(
-                username, comment, shell, sudo, pgroup, sgroups, 
-                pexpiry, pwarn, aexpiry, random
-            ))
+            f.write(','.join(cells) + '\n')
     
     wb.close()
+    print(f"Converted XLSX to CSV: {csv_file}", file=sys.stderr)
     sys.exit(0)
     
 except Exception as e:
-    print("ERROR: Failed to parse XLSX: {0}".format(e), file=sys.stderr)
+    print(f"ERROR: Failed to convert XLSX: {e}", file=sys.stderr)
     sys.exit(1)
-EOF
+PYTHON_SCRIPT
 
-python3 "$temp_script" "$file_path" "$temp_output"
-rm -f "$temp_script"
-
-    if [ $? -ne 0 ]; then
-        rm -f "$temp_output"
+    if ! python3 "$temp_script" "$file_path" "$temp_csv" 2>&1; then
+        rm -f "$temp_csv" "$temp_script"
         return 1
     fi
     
-    # Read parsed data
-    local user_count=0
-    while IFS= read -r line; do
-        BATCH_USERS+=("$line")
-        ((user_count++))
-    done < "$temp_output"
+    rm -f "$temp_script"
     
-    rm -f "$temp_output"
+    if [ ! -s "$temp_csv" ]; then
+        echo "ERROR: Conversion resulted in empty CSV"
+        rm -f "$temp_csv"
+        return 1
+    fi
     
-    echo "Parsed $user_count users from XLSX file"
+    echo "INFO: XLSX converted to temporary CSV"
     echo ""
     
-    if [ $user_count -eq 0 ]; then
-        echo "ERROR: No valid users found in file"
+    if ! parse_text_file "$temp_csv"; then
+        rm -f "$temp_csv"
         return 1
     fi
     
+    rm -f "$temp_csv"
     return 0
 }

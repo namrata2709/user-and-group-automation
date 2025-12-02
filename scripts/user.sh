@@ -42,7 +42,7 @@ main() {
     local password_expiry=""
     local password_warning=""
     local account_expiry=""
-
+    
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --add)

@@ -20,6 +20,7 @@ add_user() {
     local group_option=""
     local groups_option=""
 
+    local safe_comment="${comment//:/ - }"
     # Defaults
     if [ -z "$password_expiry" ]; then
         password_expiry="$PASSWORD_EXPIRY_DAYS"
@@ -167,8 +168,7 @@ add_user() {
         expiry_option="-e $expiry_date"
     fi
     
-    if useradd -m -c "$comment" -s "$user_shell" $group_option $groups_option $expiry_option "$username"; then
-        echo "INFO: User account created successfully"
+    if useradd -m -c "$safe_comment" -s "$user_shell" $group_option $groups_option $expiry_option "$username"; then
         
         echo "$username:$password" | chpasswd
         if [ $? -eq 0 ]; then

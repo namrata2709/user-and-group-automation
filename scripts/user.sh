@@ -33,6 +33,8 @@ source "$SCRIPT_DIR/lib/add/group_add.sh"
 source "$SCRIPT_DIR/lib/batch/batch_processor.sh"
 source "$SCRIPT_DIR/lib/batch/parsers/text_parser.sh"
 source "$SCRIPT_DIR/lib/batch/parsers/json_parser.sh"
+source "$SCRIPT_DIR/lib/batch/parsers/yaml_parser.sh"
+source "$SCRIPT_DIR/lib/batch/parsers/xlsx_parser.sh"
 main() {
     local command=""
     local target_type=""
@@ -196,52 +198,58 @@ main() {
         fi
         return
     fi
-    if [ "$command" = "batch_add" ]; then
-        if [[ -z "$batch_file" ]]; then
-            echo "ERROR: --file argument required for batch operations"
+    if [ "$command" = "batch-add" ]; then
+        if [ -z "$batch_file" ]; then
+            echo "ERROR: --batch-add requires --file parameter"
             return 1
         fi
         
-        # Detect file type and parse
-        local file_ext="${batch_file##*.}"
+        if [ ! -f "$batch_file" ]; then
+            echo "ERROR: File not found: $batch_file"
+            return 1
+        fi
         
+        # Detect file type and call appropriate parser
+        local file_ext="${batch_file##*.}"
         case "$file_ext" in
             txt)
                 if ! parse_text_file "$batch_file"; then
-                    echo "ERROR: Failed to parse text file"
                     return 1
                 fi
                 ;;
             csv)
-                if ! parse_text_file "$batch_file"; then
-                    echo "ERROR: Failed to parse CSV file"
+                if ! parse_csv_file "$batch_file"; then
                     return 1
                 fi
                 ;;
             json)
                 if ! parse_json_file "$batch_file"; then
-                    echo "ERROR: Failed to parse JSON file"
                     return 1
                 fi
                 ;;
             yaml|yml)
-                echo "ERROR: YAML parser not yet implemented"
-                return 1
+                if ! parse_yaml_file "$batch_file"; then
+                    return 1
+                fi
                 ;;
             xlsx)
-                echo "ERROR: XLSX parser not yet implemented"
-                return 1
+                if ! parse_xlsx_file "$batch_file"; then
+                    return 1
+                fi
                 ;;
             *)
-                echo "ERROR: Unsupported file type: .$file_ext"
-                echo "Supported: .txt, .csv, .json, .yaml, .xlsx"
+                echo "ERROR: Unsupported file format: $file_ext"
+                echo "Supported formats: txt, csv, json, yaml, xlsx"
                 return 1
                 ;;
         esac
         
-        # Run batch processor
-        process_batch_users
-        return $?
+        # Process the parsed users
+        if ! process_batch BATCH_USERS "$batch_file"; then
+            return 1
+        fi
+        
+        return
     fi
     echo "No valid command provided"
     exit 1

@@ -158,11 +158,21 @@ main() {
                 account_expiry="$2"
                 shift
                 ;;
-            --batch-test)
-                # Test batch processor
-                mkdir -p "$SCRIPT_DIR/lib/batch"
-                test_batch_processor
-                exit $?
+            --batch-text|--batch-file)
+                if [[ -z "$2" ]]; then
+                    echo "Error: --batch-text requires file path" >&2
+                    exit 1
+                fi
+                local batch_file="$2"
+                shift
+                
+                if parse_text_file "$batch_file"; then
+                    process_batch_users
+                    exit $?
+                else
+                    echo "ERROR: Failed to parse file"
+                    exit 1
+                fi
                 ;;
 
             *)

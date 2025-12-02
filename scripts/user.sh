@@ -31,6 +31,7 @@ source "$SCRIPT_DIR/lib/helpers/existence_check.sh"
 source "$SCRIPT_DIR/lib/add/user_add.sh"
 source "$SCRIPT_DIR/lib/add/group_add.sh"
 source "$SCRIPT_DIR/lib/batch/batch_processor.sh"
+source "$SCRIPT_DIR/lib/batch/parsers/text_parser.sh"
 main() {
     local command=""
     local target_type=""

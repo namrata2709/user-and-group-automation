@@ -30,6 +30,7 @@ source "$SCRIPT_DIR/lib/utils/sudo_manager.sh"
 source "$SCRIPT_DIR/lib/helpers/existence_check.sh"
 source "$SCRIPT_DIR/lib/add/user_add.sh"
 source "$SCRIPT_DIR/lib/add/group_add.sh"
+source "$SCRIPT_DIR/lib/batch/batch_processor.sh"
 main() {
     local command=""
     local target_type=""
@@ -155,6 +156,12 @@ main() {
                 fi
                 account_expiry="$2"
                 shift
+                ;;
+            --batch-test)
+                # Test batch processor
+                mkdir -p "$SCRIPT_DIR/lib/batch"
+                test_batch_processor
+                exit $?
                 ;;
 
             *)

@@ -121,14 +121,17 @@ process_batch_users() {
         
         for group in "${!created_groups[@]}"; do
             if [ -z "${groups_with_users[$group]}" ]; then
-                local member_count=$(getent group "$group" | awk -F: '{print $4}' | grep -c '.' || echo "0")
+                local members=$(getent group "$group" | awk -F: '{print $4}')
                 
-                if [ "$member_count" -eq 0 ]; then
+                if [ -z "$members" ]; then
                     if groupdel "$group" >/dev/null 2>&1; then
                         echo "Deleted orphaned group: $group"
                         orphaned_groups+=("$group")
                         ((orphaned_count++))
-                        log_audit "BATCH_ROLLBACK" "$group" "DELETED" "Orphaned group"
+                        log_audit "BATCH_ROLLBACK" "$group" "DELETED" "Orphaned group with no users"
+                    else
+                        echo "Failed to delete orphaned group: $group"
+                        log_audit "BATCH_ROLLBACK" "$group" "FAILED" "Could not delete orphaned group"
                     fi
                 fi
             fi

@@ -1,20 +1,9 @@
 #!/bin/bash
 
-# Parse text/CSV file for groups
-# Format: groupname
-# One group per line
 parse_group_text_file() {
     local file_path="$1"
     
-    if [ ! -f "$file_path" ]; then
-        echo "ERROR: File not found: $file_path"
-        return 1
-    fi
-    
-    if [ ! -r "$file_path" ]; then
-        echo "ERROR: Cannot read file: $file_path"
-        return 1
-    fi
+    validate_file "$file_path" || return 1
     
     declare -g -a BATCH_GROUPS=()
     local line_num=0
@@ -25,29 +14,18 @@ parse_group_text_file() {
     while IFS= read -r line || [ -n "$line" ]; do
         ((line_num++))
         
-        # Skip empty lines
-        if [ -z "$line" ]; then
-            continue
-        fi
+        [ -z "$line" ] && continue
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
         
-        # Skip comments
-        if [[ "$line" =~ ^[[:space:]]*# ]]; then
-            continue
-        fi
-        
-        # Trim whitespace
         line=$(echo "$line" | xargs)
         
-        # Simple format: just groupname
         groupname="$line"
         
-        # Validate groupname is not empty
         if [ -z "$groupname" ]; then
             echo "WARNING: Line $line_num - Empty groupname, skipping"
             continue
         fi
         
-        # Add to batch array
         BATCH_GROUPS+=("$groupname")
         
     done < "$file_path"

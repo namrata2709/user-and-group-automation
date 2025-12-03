@@ -1,31 +1,10 @@
 #!/bin/bash
 
-# Parse JSON file for groups
-# Expected format:
-# {
-#   "groups": [
-#     {"groupname": "developers"},
-#     {"groupname": "testers"}
-#   ]
-# }
 parse_group_json_file() {
     local file_path="$1"
     
-    if [ ! -f "$file_path" ]; then
-        echo "ERROR: File not found: $file_path"
-        return 1
-    fi
-    
-    if [ ! -r "$file_path" ]; then
-        echo "ERROR: Cannot read file: $file_path"
-        return 1
-    fi
-    
-    if ! command -v jq &> /dev/null; then
-        echo "ERROR: jq is required for JSON parsing"
-        echo "Install: yum install -y jq"
-        return 1
-    fi
+    validate_file "$file_path" || return 1
+    check_dependency "jq" "yum install -y jq" || return 1
     
     if ! jq empty "$file_path" 2>/dev/null; then
         echo "ERROR: Invalid JSON syntax in file"

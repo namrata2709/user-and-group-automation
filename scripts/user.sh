@@ -36,6 +36,7 @@ source "$SCRIPT_DIR/lib/helpers/role_policy.sh"
 source "$SCRIPT_DIR/lib/operations/user/add.sh"
 source "$SCRIPT_DIR/lib/operations/group/add.sh"
 
+source "$SCRIPT_DIR/lib/batch/common.sh"
 # Source batch processors
 source "$SCRIPT_DIR/lib/batch/processors/user_batch.sh"
 source "$SCRIPT_DIR/lib/batch/processors/group_batch.sh"
@@ -51,20 +52,20 @@ source "$SCRIPT_DIR/lib/batch/parsers/group/text.sh"
 source "$SCRIPT_DIR/lib/batch/parsers/group/json.sh"
 source "$SCRIPT_DIR/lib/batch/parsers/group/yaml.sh"
 source "$SCRIPT_DIR/lib/batch/parsers/group/xlsx.sh"
-main() {
-    local command=""
-    local target_type=""
-    local username=""
-    local comment=""
-    local use_random="no"
-    local shell_value=""
-    local sudo_access=""
-    local primary_group=""
-    local secondary_groups=""
-    local password_expiry=""
-    local password_warning=""
-    local account_expiry=""
-    local batch_file=""
+parse_arguments() {
+    command=""
+    entity_type=""
+    username=""
+    comment=""
+    use_random="no"
+    shell_value=""
+    sudo_access=""
+    primary_group=""
+    secondary_groups=""
+    password_expiry=""
+    password_warning=""
+    account_expiry=""
+    batch_file=""
     
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -76,7 +77,7 @@ main() {
                 fi
                 case "$2" in
                     user|group)
-                        target_type="$2"
+                        entity_type="$2"
                         ;;
                     *)
                         echo "Error: Unknown target for --add: $2" >&2
@@ -85,7 +86,6 @@ main() {
                 esac
                 shift
                 ;;
-            
             --name)
                 if [[ -z "$2" ]]; then
                     echo "Error: --name requires an argument" >&2
@@ -94,7 +94,6 @@ main() {
                 username="$2"
                 shift
                 ;;
-
             --comment)
                 if [[ -z "$2" ]]; then
                     echo "Error: --comment requires an argument" >&2
@@ -103,11 +102,9 @@ main() {
                 comment="$2"
                 shift
                 ;;
-            
             --random)
                 use_random="yes"
                 ;;
-            
             --shell)
                 if [[ -z "$2" ]]; then
                     echo "Error: --shell requires a path or role name" >&2
@@ -116,7 +113,6 @@ main() {
                 shell_value="$2"
                 shift
                 ;;
-            
             --sudo)
                 if [[ -z "$2" ]]; then
                     echo "Error: --sudo requires 'allow' or 'deny'" >&2
@@ -133,7 +129,6 @@ main() {
                 esac
                 shift
                 ;;
-            
             --primary-group|--pgroup)
                 if [[ -z "$2" ]]; then
                     echo "Error: --primary-group requires a group name" >&2
@@ -142,7 +137,6 @@ main() {
                 primary_group="$2"
                 shift
                 ;;
-            
             --groups|--sgroups)
                 if [[ -z "$2" ]]; then
                     echo "Error: --groups requires comma-separated group names" >&2
@@ -151,7 +145,6 @@ main() {
                 secondary_groups="$2"
                 shift
                 ;;
-            
             --password-expiry|--pexpiry)
                 if [[ -z "$2" ]]; then
                     echo "Error: --password-expiry requires number of days" >&2
@@ -160,7 +153,6 @@ main() {
                 password_expiry="$2"
                 shift
                 ;;
-            
             --password-warning|--pwarn)
                 if [[ -z "$2" ]]; then
                     echo "Error: --password-warning requires number of days" >&2
@@ -169,7 +161,6 @@ main() {
                 password_warning="$2"
                 shift
                 ;;
-            
             --expire|--account-expiry)
                 if [[ -z "$2" ]]; then
                     echo "Error: --expire requires days/role/date" >&2
@@ -186,7 +177,7 @@ main() {
                 fi
                 case "$2" in
                     user|group)
-                        target_type="$2"
+                        entity_type="$2"
                         ;;
                     *)
                         echo "Error: Unknown target for --batch-add: $2" >&2
@@ -195,7 +186,6 @@ main() {
                 esac
                 shift
                 ;;
-            
             --file)
                 if [[ -z "$2" ]]; then
                     echo "Error: --file requires a file path" >&2
@@ -208,7 +198,6 @@ main() {
                 fi
                 shift
                 ;;
-
             *)
                 echo "Unknown option: $1" >&2
                 exit 1
@@ -216,109 +205,96 @@ main() {
         esac
         shift
     done
-
-    if [ "$command" = "add" ]; then
-        if [[ "$target_type" = "user" ]]; then
-            add_user "$username" "$comment" "$use_random" "$shell_value" "$sudo_access" "$primary_group" "$secondary_groups" "$password_expiry" "$password_warning" "$account_expiry"
-        elif [[ "$target_type" = "group" ]]; then
-            add_group "$username"
-        else
-            echo "ERROR: Invalid target"
-            return 1
-        fi
-        return
-    fi
-    if [ "$command" = "batch-add" ]; then
-        if [ -z "$batch_file" ]; then
-            echo "ERROR: --batch-add requires --file parameter"
-            return 1
-        fi
-        
-        if [ ! -f "$batch_file" ]; then
-            echo "ERROR: File not found: $batch_file"
-            return 1
-        fi
-        
-        # Detect target type and file extension
-        local file_ext="${batch_file##*.}"
-        
-        if [[ "$target_type" = "user" ]]; then
-            # User batch add
-            case "$file_ext" in
-                txt|csv)
-                    if ! parse_user_text_file "$batch_file"; then
-                        return 1
-                    fi
-                    ;;
-                json)
-                    if ! parse_user_json_file "$batch_file"; then
-                        return 1
-                    fi
-                    ;;
-                yaml|yml)
-                    if ! parse_user_yaml_file "$batch_file"; then
-                        return 1
-                    fi
-                    ;;
-                xlsx)
-                    if ! parse_user_xlsx_file "$batch_file"; then
-                        return 1
-                    fi
-                    ;;
-                *)
-                    echo "ERROR: Unsupported file format: $file_ext"
-                    echo "Supported formats: txt, csv, json, yaml, xlsx"
-                    return 1
-                    ;;
-            esac
-            
-            if ! process_batch_users; then
-                return 1
-            fi
-            
-        elif [[ "$target_type" = "group" ]]; then
-            # Group batch add
-            case "$file_ext" in
-                txt|csv)
-                    if ! parse_group_text_file "$batch_file"; then
-                        return 1
-                    fi
-                    ;;
-                json)
-                    if ! parse_group_json_file "$batch_file"; then
-                        return 1
-                    fi
-                    ;;
-                yaml|yml)
-                    if ! parse_group_yaml_file "$batch_file"; then
-                        return 1
-                    fi
-                    ;;
-                xlsx)
-                    if ! parse_group_xlsx_file "$batch_file"; then
-                        return 1
-                    fi
-                    ;;
-                *)
-                    echo "ERROR: Unsupported file format: $file_ext"
-                    echo "Supported formats: txt, csv, json, yaml, xlsx"
-                    return 1
-                    ;;
-            esac
-            
-            if ! process_batch_groups; then
-                return 1
-            fi
-            
-        else
-            echo "ERROR: Invalid target type for batch-add"
-            return 1
-        fi
-        
-        return
-    fi
-    echo "No valid command provided"
-    exit 1
 }
 
-main "$@"
+handle_add_command() {
+    if [[ "$entity_type" = "user" ]]; then
+        add_user "$username" "$comment" "$use_random" "$shell_value" "$sudo_access" "$primary_group" "$secondary_groups" "$password_expiry" "$password_warning" "$account_expiry"
+    elif [[ "$entity_type" = "group" ]]; then
+        add_group "$username"
+    else
+        echo "ERROR: Invalid entity type"
+        return 1
+    fi
+}
+
+handle_batch_add_command() {
+    if [ -z "$batch_file" ]; then
+        echo "ERROR: --batch-add requires --file parameter"
+        return 1
+    fi
+    
+    if [ ! -f "$batch_file" ]; then
+        echo "ERROR: File not found: $batch_file"
+        return 1
+    fi
+    
+    local file_ext="${batch_file##*.}"
+    
+    if [[ "$entity_type" = "user" ]]; then
+        case "$file_ext" in
+            txt|csv)
+                parse_user_text_file "$batch_file" || return 1
+                ;;
+            json)
+                parse_user_json_file "$batch_file" || return 1
+                ;;
+            yaml|yml)
+                parse_user_yaml_file "$batch_file" || return 1
+                ;;
+            xlsx)
+                parse_user_xlsx_file "$batch_file" || return 1
+                ;;
+            *)
+                echo "ERROR: Unsupported file format: $file_ext"
+                echo "Supported formats: txt, csv, json, yaml, xlsx"
+                return 1
+                ;;
+        esac
+        
+        process_batch_users || return 1
+        
+    elif [[ "$entity_type" = "group" ]]; then
+        case "$file_ext" in
+            txt|csv)
+                parse_group_text_file "$batch_file" || return 1
+                ;;
+            json)
+                parse_group_json_file "$batch_file" || return 1
+                ;;
+            yaml|yml)
+                parse_group_yaml_file "$batch_file" || return 1
+                ;;
+            xlsx)
+                parse_group_xlsx_file "$batch_file" || return 1
+                ;;
+            *)
+                echo "ERROR: Unsupported file format: $file_ext"
+                echo "Supported formats: txt, csv, json, yaml, xlsx"
+                return 1
+                ;;
+        esac
+        
+        process_batch_groups || return 1
+        
+    else
+        echo "ERROR: Invalid entity type for batch-add"
+        return 1
+    fi
+}
+main() {
+    parse_arguments "$@"
+    
+    case "$command" in
+        add)
+            handle_add_command
+            ;;
+        batch-add)
+            handle_batch_add_command
+            ;;
+        *)
+            echo "No valid command provided"
+            exit 1
+            ;;
+    esac
+}

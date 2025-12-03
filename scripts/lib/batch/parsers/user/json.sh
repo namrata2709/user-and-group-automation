@@ -3,21 +3,8 @@
 parse_user_json_file() {
     local file_path="$1"
     
-    if [ ! -f "$file_path" ]; then
-        echo "ERROR: File not found: $file_path"
-        return 1
-    fi
-    
-    if [ ! -r "$file_path" ]; then
-        echo "ERROR: Cannot read file: $file_path"
-        return 1
-    fi
-    
-    if ! command -v jq &> /dev/null; then
-        echo "ERROR: jq is required for JSON parsing"
-        echo "Install: yum install -y jq"
-        return 1
-    fi
+    validate_file "$file_path" || return 1
+    check_dependency "jq" "yum install -y jq" || return 1
     
     if ! jq empty "$file_path" 2>/dev/null; then
         echo "ERROR: Invalid JSON syntax in file"
@@ -71,9 +58,7 @@ parse_user_json_file() {
             continue
         fi
         
-        if [ -z "$random" ]; then
-            random="no"
-        fi
+        [ -z "$random" ] && random="no"
         
         BATCH_USERS+=("$username|$comment|$shell|$sudo|$pgroup|$sgroups|$pexpiry|$pwarn|$aexpiry|$random")
         

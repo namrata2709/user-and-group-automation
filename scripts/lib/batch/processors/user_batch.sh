@@ -129,17 +129,12 @@ process_batch_users() {
                         orphaned_groups+=("$group")
                         ((orphaned_count++))
                         log_audit "BATCH_ROLLBACK" "$group" "DELETED" "Orphaned group with no users"
-                    else
-                        echo "Failed to delete orphaned group: $group"
-                        log_audit "BATCH_ROLLBACK" "$group" "FAILED" "Could not delete orphaned group"
                     fi
                 fi
             fi
         done
         
-        if [ $orphaned_count -eq 0 ]; then
-            echo "No orphaned groups found"
-        fi
+        [ $orphaned_count -eq 0 ] && echo "No orphaned groups found"
         echo ""
     fi
     

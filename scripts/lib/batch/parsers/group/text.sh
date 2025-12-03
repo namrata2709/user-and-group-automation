@@ -3,7 +3,7 @@
 parse_group_text_file() {
     local file_path="$1"
     
-    validate_file "$file_path" || return 1
+    validate_batch_file "$file_path" || return 1
     
     declare -g -a BATCH_GROUPS=()
     local line_num=0

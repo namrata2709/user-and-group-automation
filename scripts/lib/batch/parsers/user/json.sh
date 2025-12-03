@@ -3,7 +3,7 @@
 parse_user_json_file() {
     local file_path="$1"
     
-    validate_file "$file_path" || return 1
+    validate_batch_file "$file_path" || return 1
     check_dependency "jq" "yum install -y jq" || return 1
     
     if ! jq empty "$file_path" 2>/dev/null; then

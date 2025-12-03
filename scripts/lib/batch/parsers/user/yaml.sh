@@ -35,15 +35,7 @@ parse_user_yaml_file() {
     local file_path="$1"
     
     # File validation
-    if [ ! -f "$file_path" ]; then
-        echo "ERROR: File not found: $file_path"
-        return 1
-    fi
-    
-    if [ ! -r "$file_path" ]; then
-        echo "ERROR: Cannot read file: $file_path"
-        return 1
-    fi
+    validate_batch_file "$file_path" || return 1
     
     # Initialize global array
     declare -g -a BATCH_USERS=()

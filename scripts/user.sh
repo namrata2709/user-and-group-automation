@@ -16,13 +16,18 @@ if [ ! -f "$INSTALL_MARKER" ]; then
     exit 1
 fi
 CONFIG_FILE="/opt/admin_dashboard/config/user_mgmt.conf"
-if [ -f "$CONFIG_FILE" ]; then
-    source "$CONFIG_FILE"
-else
-    echo "ERROR: Configuration file not found: $CONFIG_FILE"
+
+# Source config loader
+source "$SCRIPT_DIR/lib/core/config.sh"
+
+# Load and validate configuration
+if ! load_config "$CONFIG_FILE"; then
+    echo ""
+    echo "Configuration validation failed. Please fix the issues above."
     exit 1
 fi
 # Source core libraries
+source "$SCRIPT_DIR/lib/core/config.sh"
 source "$SCRIPT_DIR/lib/core/logging.sh"
 source "$SCRIPT_DIR/lib/core/validation.sh"
 
@@ -229,10 +234,10 @@ handle_batch_add_command() {
         return 1
     fi
     
-    local file_ext="${batch_file##*.}"
+    local file_extension="${batch_file##*.}"
     
     if [[ "$entity_type" = "user" ]]; then
-        case "$file_ext" in
+        case "$file_extension" in
             txt|csv)
                 parse_user_text_file "$batch_file" || return 1
                 ;;
@@ -246,7 +251,7 @@ handle_batch_add_command() {
                 parse_user_xlsx_file "$batch_file" || return 1
                 ;;
             *)
-                echo "ERROR: Unsupported file format: $file_ext"
+                echo "ERROR: Unsupported file format: $file_extension"
                 echo "Supported formats: txt, csv, json, yaml, xlsx"
                 return 1
                 ;;
@@ -255,7 +260,7 @@ handle_batch_add_command() {
         process_batch_users || return 1
         
     elif [[ "$entity_type" = "group" ]]; then
-        case "$file_ext" in
+        case "$file_extension" in
             txt|csv)
                 parse_group_text_file "$batch_file" || return 1
                 ;;
@@ -269,7 +274,7 @@ handle_batch_add_command() {
                 parse_group_xlsx_file "$batch_file" || return 1
                 ;;
             *)
-                echo "ERROR: Unsupported file format: $file_ext"
+                echo "ERROR: Unsupported file format: $file_extension"
                 echo "Supported formats: txt, csv, json, yaml, xlsx"
                 return 1
                 ;;
@@ -293,7 +298,22 @@ main() {
             handle_batch_add_command
             ;;
         *)
-            echo "No valid command provided"
+            echo "ERROR: No valid command provided"
+            echo ""
+            echo "Usage: $0 COMMAND [OPTIONS]"
+            echo ""
+            echo "Commands:"
+            echo "  --add user         Add a single user"
+            echo "  --add group        Add a single group"
+            echo "  --batch-add user   Add multiple users from file"
+            echo "  --batch-add group  Add multiple groups from file"
+            echo ""
+            echo "Examples:"
+            echo "  $0 --add user --name alice --comment \"Alice:Eng\""
+            echo "  $0 --add group --name developers"
+            echo "  $0 --batch-add user --file users.txt"
+            echo "  $0 --batch-add group --file groups.json"
+            echo ""
             exit 1
             ;;
     esac

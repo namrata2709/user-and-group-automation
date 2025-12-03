@@ -1,6 +1,7 @@
 #!/bin/bash
 
-validate_file() {
+# Validate batch file exists and is readable
+validate_batch_file() {
     local file_path="$1"
     
     if [ ! -f "$file_path" ]; then
@@ -16,26 +17,31 @@ validate_file() {
     return 0
 }
 
+# Check if command dependency exists
 check_dependency() {
-    local cmd="$1"
+    local command="$1"
     local install_hint="$2"
     
-    if ! command -v "$cmd" &> /dev/null; then
-        echo "ERROR: $cmd is required"
-        echo "Install: $install_hint"
+    if ! command -v "$command" &> /dev/null; then
+        echo "ERROR: $command is required"
+        if [ -n "$install_hint" ]; then
+            echo "Install: $install_hint"
+        fi
         return 1
     fi
     
     return 0
 }
 
+# Convert XLSX to CSV using Python
 convert_xlsx_to_csv() {
     local xlsx_file="$1"
-    local entity_type="$2"
+    local entity_type="$2"  # "user" or "group"
     local temp_csv=$(mktemp --suffix=.csv)
     local temp_script=$(mktemp --suffix=.py)
     
     if [ "$entity_type" = "user" ]; then
+        # User XLSX conversion script
         cat << 'PYTHON_SCRIPT' > "$temp_script"
 import sys
 import openpyxl
@@ -49,18 +55,22 @@ try:
     
     with open(csv_file, 'w') as f:
         for row_idx, row in enumerate(ws.iter_rows(values_only=True), start=1):
+            # Skip header row if present
             if row_idx == 1 and row[0] and str(row[0]).lower() == 'username':
                 continue
             
+            # Skip empty rows
             if not row[0]:
                 continue
             
+            # Process up to 10 columns for users
             cells = []
             for cell in row[:10]:
                 if cell is None:
                     cells.append('')
                 else:
                     cell_str = str(cell).strip()
+                    # Escape commas and quotes in CSV
                     if ',' in cell_str or '"' in cell_str:
                         cell_str = '"' + cell_str.replace('"', '""') + '"'
                     cells.append(cell_str)
@@ -76,6 +86,7 @@ except Exception as e:
     sys.exit(1)
 PYTHON_SCRIPT
     else
+        # Group XLSX conversion script
         cat << 'PYTHON_SCRIPT' > "$temp_script"
 import sys
 import openpyxl
@@ -89,9 +100,11 @@ try:
     
     with open(csv_file, 'w') as f:
         for row_idx, row in enumerate(ws.iter_rows(values_only=True), start=1):
+            # Skip header row if present
             if row_idx == 1 and row[0] and str(row[0]).lower() == 'groupname':
                 continue
             
+            # Skip empty rows
             if not row[0]:
                 continue
             
@@ -108,6 +121,7 @@ except Exception as e:
 PYTHON_SCRIPT
     fi
     
+    # Execute conversion
     if ! python3 "$temp_script" "$xlsx_file" "$temp_csv" 2>&1; then
         rm -f "$temp_csv" "$temp_script"
         return 1
@@ -115,12 +129,14 @@ PYTHON_SCRIPT
     
     rm -f "$temp_script"
     
+    # Verify output
     if [ ! -s "$temp_csv" ]; then
         echo "ERROR: Conversion resulted in empty CSV"
         rm -f "$temp_csv"
         return 1
     fi
     
+    # Return temp file path
     echo "$temp_csv"
     return 0
 }

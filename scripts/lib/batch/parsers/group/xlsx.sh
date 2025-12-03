@@ -3,7 +3,7 @@
 parse_group_xlsx_file() {
     local file_path="$1"
     
-    validate_file "$file_path" || return 1
+    validate_batch_file "$file_path" || return 1
     check_dependency "python3" "sudo yum install -y python3" || return 1
     
     if ! python3 -c "import openpyxl" 2>/dev/null; then
@@ -15,6 +15,7 @@ parse_group_xlsx_file() {
     echo "Parsing XLSX file: $file_path"
     echo ""
     
+    # Use common conversion function
     local temp_csv=$(convert_xlsx_to_csv "$file_path" "group")
     if [ $? -ne 0 ]; then
         return 1
@@ -23,6 +24,7 @@ parse_group_xlsx_file() {
     echo "INFO: XLSX converted to temporary CSV"
     echo ""
     
+    # Parse the CSV
     if ! parse_group_text_file "$temp_csv"; then
         rm -f "$temp_csv"
         return 1

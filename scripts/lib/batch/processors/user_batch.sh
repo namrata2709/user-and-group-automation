@@ -42,14 +42,53 @@ process_batch_users() {
         
         IFS='|' read -r username comment shell sudo pgroup sgroups pexpiry pwarn aexpiry random <<< "${BATCH_USERS[$user_index]}"
         
-        [ -z "$shell" ] && shell="$GLOBAL_SHELL"
-        [ -z "$sudo" ] && sudo="$GLOBAL_SUDO"
-        [ -z "$pgroup" ] && pgroup="$GLOBAL_PGROUP"
-        [ -z "$sgroups" ] && sgroups="$GLOBAL_SGROUPS"
-        [ -z "$pexpiry" ] && pexpiry="$GLOBAL_PEXPIRY"
-        [ -z "$pwarn" ] && pwarn="$GLOBAL_PWARN"
-        [ -z "$aexpiry" ] && aexpiry="$GLOBAL_EXPIRE"
-        [ "$random" = "no" ] && [ -n "$GLOBAL_RANDOM" ] && random="$GLOBAL_RANDOM"
+        if [ -z "$shell" ]; then
+            if [ -n "$GLOBAL_SHELL" ]; then
+                shell="$GLOBAL_SHELL"
+            fi
+        fi
+        
+        if [ -z "$sudo" ]; then
+            if [ -n "$GLOBAL_SUDO" ]; then
+                sudo="$GLOBAL_SUDO"
+            fi
+        fi
+        
+        if [ -z "$pgroup" ]; then
+            if [ -n "$GLOBAL_PGROUP" ]; then
+                pgroup="$GLOBAL_PGROUP"
+            fi
+        fi
+        
+        if [ -z "$sgroups" ]; then
+            if [ -n "$GLOBAL_SGROUPS" ]; then
+                sgroups="$GLOBAL_SGROUPS"
+            fi
+        fi
+        
+        if [ -z "$pexpiry" ]; then
+            if [ -n "$GLOBAL_PEXPIRY" ]; then
+                pexpiry="$GLOBAL_PEXPIRY"
+            fi
+        fi
+        
+        if [ -z "$pwarn" ]; then
+            if [ -n "$GLOBAL_PWARN" ]; then
+                pwarn="$GLOBAL_PWARN"
+            fi
+        fi
+        
+        if [ -z "$aexpiry" ]; then
+            if [ -n "$GLOBAL_EXPIRE" ]; then
+                aexpiry="$GLOBAL_EXPIRE"
+            fi
+        fi
+        
+        if [ "$random" = "no" ] || [ -z "$random" ]; then
+            if [ -n "$GLOBAL_RANDOM" ]; then
+                random="$GLOBAL_RANDOM"
+            fi
+        fi
         
         echo "[$total] Processing: $username"
         

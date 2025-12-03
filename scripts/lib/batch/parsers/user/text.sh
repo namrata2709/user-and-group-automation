@@ -17,7 +17,7 @@
 # Output: Populates BATCH_USERS array
 # Returns: 0 on success, 1 on failure
 # ================================================
-parse_text_file() {
+parse_user_text_file() {
     local file_path="$1"
     
     if [ ! -f "$file_path" ]; then

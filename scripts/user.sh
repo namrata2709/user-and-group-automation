@@ -22,24 +22,35 @@ else
     echo "ERROR: Configuration file not found: $CONFIG_FILE"
     exit 1
 fi
-source "$SCRIPT_DIR/lib/utils/validation.sh"
-source "$SCRIPT_DIR/lib/utils/logging.sh"
-source "$SCRIPT_DIR/lib/utils/role_validator.sh"
-source "$SCRIPT_DIR/lib/utils/helpers.sh"
-source "$SCRIPT_DIR/lib/utils/sudo_manager.sh"
+# Source core libraries
+source "$SCRIPT_DIR/lib/core/logging.sh"
+source "$SCRIPT_DIR/lib/core/validation.sh"
+
+# Source helpers
 source "$SCRIPT_DIR/lib/helpers/existence_check.sh"
-source "$SCRIPT_DIR/lib/add/user_add.sh"
-source "$SCRIPT_DIR/lib/add/group_add.sh"
-source "$SCRIPT_DIR/lib/batch/batch_processor.sh"
-source "$SCRIPT_DIR/lib/batch/parsers/text_parser.sh"
-source "$SCRIPT_DIR/lib/batch/parsers/json_parser.sh"
-source "$SCRIPT_DIR/lib/batch/parsers/yaml_parser.sh"
-source "$SCRIPT_DIR/lib/batch/parsers/xlsx_parser.sh"
-source "$SCRIPT_DIR/lib/batch/parsers/group_text_parser.sh"
-source "$SCRIPT_DIR/lib/batch/parsers/group_json_parser.sh"
-source "$SCRIPT_DIR/lib/batch/parsers/group_yaml_parser.sh"
-source "$SCRIPT_DIR/lib/batch/parsers/group_xlsx_parser.sh"
-source "$SCRIPT_DIR/lib/batch/group_batch_processor.sh"
+source "$SCRIPT_DIR/lib/helpers/password.sh"
+source "$SCRIPT_DIR/lib/helpers/sudo_manager.sh"
+source "$SCRIPT_DIR/lib/helpers/role_policy.sh"
+
+# Source operations
+source "$SCRIPT_DIR/lib/operations/user/add.sh"
+source "$SCRIPT_DIR/lib/operations/group/add.sh"
+
+# Source batch processors
+source "$SCRIPT_DIR/lib/batch/processors/user_batch.sh"
+source "$SCRIPT_DIR/lib/batch/processors/group_batch.sh"
+
+# Source user parsers
+source "$SCRIPT_DIR/lib/batch/parsers/user/text.sh"
+source "$SCRIPT_DIR/lib/batch/parsers/user/json.sh"
+source "$SCRIPT_DIR/lib/batch/parsers/user/yaml.sh"
+source "$SCRIPT_DIR/lib/batch/parsers/user/xlsx.sh"
+
+# Source group parsers
+source "$SCRIPT_DIR/lib/batch/parsers/group/text.sh"
+source "$SCRIPT_DIR/lib/batch/parsers/group/json.sh"
+source "$SCRIPT_DIR/lib/batch/parsers/group/yaml.sh"
+source "$SCRIPT_DIR/lib/batch/parsers/group/xlsx.sh"
 main() {
     local command=""
     local target_type=""
@@ -235,22 +246,22 @@ main() {
             # User batch add
             case "$file_ext" in
                 txt|csv)
-                    if ! parse_text_file "$batch_file"; then
+                    if ! parse_user_text_file "$batch_file"; then
                         return 1
                     fi
                     ;;
                 json)
-                    if ! parse_json_file "$batch_file"; then
+                    if ! parse_user_json_file "$batch_file"; then
                         return 1
                     fi
                     ;;
                 yaml|yml)
-                    if ! parse_yaml_file "$batch_file"; then
+                    if ! parse_user_yaml_file "$batch_file"; then
                         return 1
                     fi
                     ;;
                 xlsx)
-                    if ! parse_xlsx_file "$batch_file"; then
+                    if ! parse_user_xlsx_file "$batch_file"; then
                         return 1
                     fi
                     ;;

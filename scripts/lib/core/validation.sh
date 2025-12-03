@@ -194,7 +194,7 @@ validate_user_input() {
         return 1
     fi
 }
-
+# Validate group name format
 validate_groupname() {
     local groupname="$1"
 

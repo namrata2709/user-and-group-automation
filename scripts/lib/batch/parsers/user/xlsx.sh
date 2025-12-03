@@ -1,6 +1,6 @@
 #!/bin/bash
 
-parse_xlsx_file() {
+parse_user_xlsx_file() {
     local file_path="$1"
     
     if [ ! -f "$file_path" ]; then
@@ -87,7 +87,7 @@ PYTHON_SCRIPT
     echo "INFO: XLSX converted to temporary CSV"
     echo ""
     
-    if ! parse_text_file "$temp_csv"; then
+    if ! parse_user_text_file "$temp_csv"; then
         rm -f "$temp_csv"
         return 1
     fi

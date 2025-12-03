@@ -1,6 +1,6 @@
 #!/bin/bash
 
-parse_json_file() {
+parse_user_json_file() {
     local file_path="$1"
     
     if [ ! -f "$file_path" ]; then

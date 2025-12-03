@@ -31,7 +31,7 @@
 #     comment: "Bob Jones:Sales"
 #     ...
 # ================================================
-parse_yaml_file() {
+parse_user_yaml_file() {
     local file_path="$1"
     
     # File validation

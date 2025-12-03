@@ -298,3 +298,6 @@ main() {
             ;;
     esac
 }
+
+# Execute main function with all arguments
+main "$@"

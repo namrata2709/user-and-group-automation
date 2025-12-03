@@ -1,11 +1,5 @@
 #!/bin/bash
 
-# ================================================
-# Batch User Processor
-# File: lib/batch/batch_processor.sh
-# Version: 1.0.0
-# ================================================
-
 process_batch_users() {
     local start_time=$(date +%s)
     
@@ -18,7 +12,6 @@ process_batch_users() {
     declare -a failed_users=()
     declare -a skipped_users=()
     
-    # Track groups for rollback
     declare -A created_groups=()
     declare -A groups_with_users=()
     
@@ -27,10 +20,36 @@ process_batch_users() {
     echo "========================================"
     echo ""
     
+    if [ -n "$GLOBAL_SHELL" ] || [ -n "$GLOBAL_SUDO" ] || [ -n "$GLOBAL_PGROUP" ] || \
+       [ -n "$GLOBAL_SGROUPS" ] || [ -n "$GLOBAL_PEXPIRY" ] || [ -n "$GLOBAL_PWARN" ] || \
+       [ -n "$GLOBAL_EXPIRE" ] || [ -n "$GLOBAL_RANDOM" ]; then
+        echo "Global Parameters Applied:"
+        [ -n "$GLOBAL_SHELL" ] && echo "  Shell:            $GLOBAL_SHELL"
+        [ -n "$GLOBAL_SUDO" ] && echo "  Sudo Access:      $GLOBAL_SUDO"
+        [ -n "$GLOBAL_PGROUP" ] && echo "  Primary Group:    $GLOBAL_PGROUP"
+        [ -n "$GLOBAL_SGROUPS" ] && echo "  Secondary Groups: $GLOBAL_SGROUPS"
+        [ -n "$GLOBAL_PEXPIRY" ] && echo "  Password Expiry:  $GLOBAL_PEXPIRY days"
+        [ -n "$GLOBAL_PWARN" ] && echo "  Password Warning: $GLOBAL_PWARN days"
+        [ -n "$GLOBAL_EXPIRE" ] && echo "  Account Expiry:   $GLOBAL_EXPIRE"
+        [ -n "$GLOBAL_RANDOM" ] && echo "  Random Password:  yes"
+        echo ""
+        echo "Note: File values override global parameters"
+        echo ""
+    fi
+    
     for user_index in "${!BATCH_USERS[@]}"; do
         ((total++))
         
         IFS='|' read -r username comment shell sudo pgroup sgroups pexpiry pwarn aexpiry random <<< "${BATCH_USERS[$user_index]}"
+        
+        [ -z "$shell" ] && shell="$GLOBAL_SHELL"
+        [ -z "$sudo" ] && sudo="$GLOBAL_SUDO"
+        [ -z "$pgroup" ] && pgroup="$GLOBAL_PGROUP"
+        [ -z "$sgroups" ] && sgroups="$GLOBAL_SGROUPS"
+        [ -z "$pexpiry" ] && pexpiry="$GLOBAL_PEXPIRY"
+        [ -z "$pwarn" ] && pwarn="$GLOBAL_PWARN"
+        [ -z "$aexpiry" ] && aexpiry="$GLOBAL_EXPIRE"
+        [ "$random" = "no" ] && [ -n "$GLOBAL_RANDOM" ] && random="$GLOBAL_RANDOM"
         
         echo "[$total] Processing: $username"
         
@@ -50,7 +69,6 @@ process_batch_users() {
             continue
         fi
         
-        # Handle primary group
         if [ -n "$pgroup" ]; then
             if [ "$(group_exists "$pgroup")" = "no" ]; then
                 if add_group "$pgroup" "yes" >/dev/null 2>&1; then
@@ -65,7 +83,6 @@ process_batch_users() {
             fi
         fi
         
-        # Handle secondary groups
         if [ -n "$sgroups" ]; then
             IFS=',' read -ra GROUP_ARRAY <<< "$sgroups"
             for group in "${GROUP_ARRAY[@]}"; do
@@ -90,7 +107,6 @@ process_batch_users() {
             ((created++))
             success_users+=("$username")
             
-            # Mark groups as having users
             if [ -n "$pgroup" ]; then
                 groups_with_users["$pgroup"]=1
             fi
@@ -110,7 +126,6 @@ process_batch_users() {
         echo ""
     done
     
-    # Rollback orphaned groups
     local orphaned_count=0
     declare -a orphaned_groups=()
     
@@ -219,4 +234,3 @@ validate_batch_structure() {
     
     return 0
 }
-

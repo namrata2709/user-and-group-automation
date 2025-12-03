@@ -57,6 +57,7 @@ source "$SCRIPT_DIR/lib/batch/parsers/group/text.sh"
 source "$SCRIPT_DIR/lib/batch/parsers/group/json.sh"
 source "$SCRIPT_DIR/lib/batch/parsers/group/yaml.sh"
 source "$SCRIPT_DIR/lib/batch/parsers/group/xlsx.sh"
+
 parse_arguments() {
     command=""
     entity_type=""
@@ -71,6 +72,15 @@ parse_arguments() {
     password_warning=""
     account_expiry=""
     batch_file=""
+    
+    GLOBAL_SHELL=""
+    GLOBAL_SUDO=""
+    GLOBAL_PGROUP=""
+    GLOBAL_SGROUPS=""
+    GLOBAL_PEXPIRY=""
+    GLOBAL_PWARN=""
+    GLOBAL_EXPIRE=""
+    GLOBAL_RANDOM=""
     
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -202,6 +212,73 @@ parse_arguments() {
                     exit 1
                 fi
                 shift
+                ;;
+            --global-shell)
+                if [[ -z "$2" ]]; then
+                    echo "Error: --global-shell requires a path or role name" >&2
+                    exit 1
+                fi
+                GLOBAL_SHELL="$2"
+                shift
+                ;;
+            --global-sudo)
+                if [[ -z "$2" ]]; then
+                    echo "Error: --global-sudo requires 'allow' or 'deny'" >&2
+                    exit 1
+                fi
+                case "$2" in
+                    allow|deny)
+                        GLOBAL_SUDO="$2"
+                        ;;
+                    *)
+                        echo "Error: --global-sudo must be 'allow' or 'deny'" >&2
+                        exit 1
+                        ;;
+                esac
+                shift
+                ;;
+            --global-pgroup)
+                if [[ -z "$2" ]]; then
+                    echo "Error: --global-pgroup requires a group name" >&2
+                    exit 1
+                fi
+                GLOBAL_PGROUP="$2"
+                shift
+                ;;
+            --global-sgroups)
+                if [[ -z "$2" ]]; then
+                    echo "Error: --global-sgroups requires comma-separated group names" >&2
+                    exit 1
+                fi
+                GLOBAL_SGROUPS="$2"
+                shift
+                ;;
+            --global-pexpiry)
+                if [[ -z "$2" ]]; then
+                    echo "Error: --global-pexpiry requires number of days" >&2
+                    exit 1
+                fi
+                GLOBAL_PEXPIRY="$2"
+                shift
+                ;;
+            --global-pwarn)
+                if [[ -z "$2" ]]; then
+                    echo "Error: --global-pwarn requires number of days" >&2
+                    exit 1
+                fi
+                GLOBAL_PWARN="$2"
+                shift
+                ;;
+            --global-expire)
+                if [[ -z "$2" ]]; then
+                    echo "Error: --global-expire requires days/role/date" >&2
+                    exit 1
+                fi
+                GLOBAL_EXPIRE="$2"
+                shift
+                ;;
+            --global-random)
+                GLOBAL_RANDOM="yes"
                 ;;
             *)
                 echo "Unknown option: $1" >&2

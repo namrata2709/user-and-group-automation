@@ -40,6 +40,8 @@ source "$SCRIPT_DIR/lib/helpers/role_policy.sh"
 # Source operations
 source "$SCRIPT_DIR/lib/operations/user/add.sh"
 source "$SCRIPT_DIR/lib/operations/user/update.sh"
+source "$SCRIPT_DIR/lib/operations/user/lock.sh"
+source "$SCRIPT_DIR/lib/operations/user/unlock.sh"
 source "$SCRIPT_DIR/lib/operations/group/add.sh"
 
 source "$SCRIPT_DIR/lib/batch/common.sh"
@@ -73,6 +75,7 @@ parse_arguments() {
     password_warning=""
     account_expiry=""
     batch_file=""
+    lock_reason=""
     
     GLOBAL_SHELL=""
     GLOBAL_SUDO=""
@@ -117,6 +120,48 @@ parse_arguments() {
                         exit 1
                         ;;
                 esac
+                shift
+                ;;
+            --lock)
+                command="lock"
+                if [[ -z "$2" ]]; then
+                    echo "Error: --lock requires 'user'" >&2
+                    exit 1
+                fi
+                case "$2" in
+                    user)
+                        entity_type="$2"
+                        ;;
+                    *)
+                        echo "Error: Unknown target for --lock: $2" >&2
+                        exit 1
+                        ;;
+                esac
+                shift
+                ;;
+            --unlock)
+                command="unlock"
+                if [[ -z "$2" ]]; then
+                    echo "Error: --unlock requires 'user'" >&2
+                    exit 1
+                fi
+                case "$2" in
+                    user)
+                        entity_type="$2"
+                        ;;
+                    *)
+                        echo "Error: Unknown target for --unlock: $2" >&2
+                        exit 1
+                        ;;
+                esac
+                shift
+                ;;
+            --reason)
+                if [[ -z "$2" ]]; then
+                    echo "Error: --reason requires a reason text" >&2
+                    exit 1
+                fi
+                lock_reason="$2"
                 shift
                 ;;
             --name)
@@ -380,6 +425,39 @@ handle_update_command() {
     fi
 }
 
+handle_lock_command() {
+    if [[ "$entity_type" != "user" ]]; then
+        echo "ERROR: Currently only user lock is supported"
+        return 1
+    fi
+    
+    if [ -z "$username" ]; then
+        echo "ERROR: --lock requires --name parameter"
+        return 1
+    fi
+    
+    if [ -z "$lock_reason" ]; then
+        echo "ERROR: --lock requires --reason parameter"
+        return 1
+    fi
+    
+    lock_user "$username" "$lock_reason"
+}
+
+handle_unlock_command() {
+    if [[ "$entity_type" != "user" ]]; then
+        echo "ERROR: Currently only user unlock is supported"
+        return 1
+    fi
+    
+    if [ -z "$username" ]; then
+        echo "ERROR: --unlock requires --name parameter"
+        return 1
+    fi
+    
+    unlock_user "$username" "$shell_value" "$sudo_access" "$account_expiry"
+}
+
 handle_batch_add_command() {
     if [ -z "$batch_file" ]; then
         echo "ERROR: --batch-add requires --file parameter"
@@ -454,6 +532,12 @@ main() {
         update)
             handle_update_command
             ;;
+        lock)
+            handle_lock_command
+            ;;
+        unlock)
+            handle_unlock_command
+            ;;
         batch-add)
             handle_batch_add_command
             ;;
@@ -462,14 +546,16 @@ main() {
             echo "  --add user         Add a single user"
             echo "  --add group        Add a single group"
             echo "  --update user      Update user attributes"
+            echo "  --lock user        Lock user account"
+            echo "  --unlock user      Unlock user account"
             echo "  --batch-add user   Add multiple users from file"
             echo "  --batch-add group  Add multiple groups from file"
             echo ""
             echo "Examples:"
             echo "  $0 --add user --name alice --comment \"Alice:Eng\""
-            echo "  $0 --add group --name developers"
             echo "  $0 --update user --name alice --shell /bin/zsh"
-            echo "  $0 --update user --name alice --sudo allow --expire 90"
+            echo "  $0 --lock user --name alice --reason \"Security audit\""
+            echo "  $0 --unlock user --name alice --shell developer --sudo allow --expire 365"
             echo "  $0 --batch-add user --file users.txt"
             echo "  $0 --batch-add group --file groups.json"
             echo ""

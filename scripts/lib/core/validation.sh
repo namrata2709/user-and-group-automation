@@ -211,3 +211,32 @@ validate_groupname() {
 
     return 0
 }
+
+validate_update_user() {
+    local username="$1"
+    local operation="$2"
+    
+    if [ -z "$username" ]; then
+        echo "ERROR: Username is required"
+        return 1
+    fi
+    
+    if ! validate_username "$username"; then
+        echo "ERROR: Invalid username format: $username"
+        return 1
+    fi
+    
+    if [ "$(user_exists "$username")" = "no" ]; then
+        echo "ERROR: User '$username' does not exist"
+        log_audit "$operation" "$username" "FAILED" "User does not exist"
+        return 1
+    fi
+    
+    if is_system_user "$username"; then
+        echo "ERROR: Cannot modify system user '$username' (UID < $MIN_USER_UID)"
+        log_audit "$operation" "$username" "FAILED" "System user modification denied"
+        return 1
+    fi
+    
+    return 0
+}

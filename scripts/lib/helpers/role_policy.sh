@@ -50,3 +50,57 @@ apply_role_defaults() {
             ;;
     esac
 }
+
+get_shell_from_role() {
+    local role="$1"
+    
+    case "$role" in
+        admin) echo "$SHELL_ROLE_ADMIN" ;;
+        developer) echo "$SHELL_ROLE_DEVELOPER" ;;
+        support) echo "$SHELL_ROLE_SUPPORT" ;;
+        intern) echo "$SHELL_ROLE_INTERN" ;;
+        manager) echo "$SHELL_ROLE_MANAGER" ;;
+        contractor) echo "$SHELL_ROLE_CONTRACTOR" ;;
+    esac
+}
+
+get_expiry_days_from_role() {
+    local role="$1"
+    
+    case "$role" in
+        admin|developer|support|manager)
+            echo ""
+            ;;
+        intern)
+            echo "$ACCOUNT_EXPIRY_INTERN"
+            ;;
+        contractor)
+            echo "$ACCOUNT_EXPIRY_CONTRACTOR"
+            ;;
+    esac
+}
+
+calculate_expiry_date() {
+    local expiry_value="$1"
+    
+    if [[ "$expiry_value" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+        echo "$expiry_value|$expiry_value"
+    elif [[ "$expiry_value" =~ ^[0-9]+$ ]]; then
+        if [ "$expiry_value" -eq 0 ]; then
+            echo "|never"
+        else
+            local date=$(date -d "+${expiry_value} days" +%Y-%m-%d)
+            echo "$date|$expiry_value days (on $date)"
+        fi
+    elif is_valid_role "$expiry_value"; then
+        local days=$(get_expiry_days_from_role "$expiry_value")
+        if [ -z "$days" ]; then
+            echo "|never (role: $expiry_value)"
+        else
+            local date=$(date -d "+${days} days" +%Y-%m-%d)
+            echo "$date|$days days (on $date, role: $expiry_value)"
+        fi
+    else
+        return 1
+    fi
+}

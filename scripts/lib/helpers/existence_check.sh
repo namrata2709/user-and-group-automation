@@ -44,3 +44,23 @@ group_exists() {
     echo "no"
     return 1
 }
+
+is_system_user() {
+    local username="$1"
+    
+    if [ -z "$username" ]; then
+        return 1
+    fi
+    
+    local uid=$(id -u "$username" 2>/dev/null)
+    
+    if [ -z "$uid" ]; then
+        return 1
+    fi
+    
+    if [ "$uid" -lt "$MIN_USER_UID" ]; then
+        return 0
+    fi
+    
+    return 1
+}

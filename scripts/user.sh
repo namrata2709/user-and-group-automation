@@ -39,6 +39,7 @@ source "$SCRIPT_DIR/lib/helpers/role_policy.sh"
 
 # Source operations
 source "$SCRIPT_DIR/lib/operations/user/add.sh"
+source "$SCRIPT_DIR/lib/operations/user/update.sh"
 source "$SCRIPT_DIR/lib/operations/group/add.sh"
 
 source "$SCRIPT_DIR/lib/batch/common.sh"
@@ -96,6 +97,23 @@ parse_arguments() {
                         ;;
                     *)
                         echo "Error: Unknown target for --add: $2" >&2
+                        exit 1
+                        ;;
+                esac
+                shift
+                ;;
+            --update)
+                command="update"
+                if [[ -z "$2" ]]; then
+                    echo "Error: --update requires 'user' or 'group'" >&2
+                    exit 1
+                fi
+                case "$2" in
+                    user|group)
+                        entity_type="$2"
+                        ;;
+                    *)
+                        echo "Error: Unknown target for --update: $2" >&2
                         exit 1
                         ;;
                 esac
@@ -300,6 +318,68 @@ handle_add_command() {
     fi
 }
 
+handle_update_command() {
+    if [[ "$entity_type" != "user" ]]; then
+        echo "ERROR: Currently only user updates are supported"
+        return 1
+    fi
+    
+    if [ -z "$username" ]; then
+        echo "ERROR: --update requires --name parameter"
+        return 1
+    fi
+    
+    if [ -z "$shell_value" ] && [ -z "$sudo_access" ] && [ -z "$account_expiry" ] && [ -z "$comment" ]; then
+        echo "ERROR: At least one update parameter required:"
+        echo "  --shell <path|role>"
+        echo "  --sudo <allow|deny>"
+        echo "  --expire <date|days|0|role>"
+        echo "  --comment <firstname lastname:department>"
+        return 1
+    fi
+    
+    local has_error=0
+    
+    echo "Updating user: $username"
+    echo ""
+    
+    if [ -n "$shell_value" ]; then
+        if ! update_user_shell "$username" "$shell_value"; then
+            has_error=1
+        fi
+        echo ""
+    fi
+    
+    if [ -n "$sudo_access" ]; then
+        if ! update_user_sudo "$username" "$sudo_access"; then
+            has_error=1
+        fi
+        echo ""
+    fi
+    
+    if [ -n "$account_expiry" ]; then
+        if ! update_user_expiry "$username" "$account_expiry"; then
+            has_error=1
+        fi
+        echo ""
+    fi
+    
+    if [ -n "$comment" ]; then
+        if ! update_user_comment "$username" "$comment"; then
+            has_error=1
+        fi
+        echo ""
+    fi
+    
+    if [ $has_error -eq 0 ]; then
+        echo "${ICON_SUCCESS} All updates completed successfully"
+        return 0
+    else
+        echo "${ICON_ERROR} Some updates failed"
+        return 1
+    fi
+}
+
 handle_batch_add_command() {
     if [ -z "$batch_file" ]; then
         echo "ERROR: --batch-add requires --file parameter"
@@ -371,23 +451,25 @@ main() {
         add)
             handle_add_command
             ;;
+        update)
+            handle_update_command
+            ;;
         batch-add)
             handle_batch_add_command
             ;;
         *)
-            echo "ERROR: No valid command provided"
-            echo ""
-            echo "Usage: $0 COMMAND [OPTIONS]"
-            echo ""
             echo "Commands:"
             echo "  --add user         Add a single user"
             echo "  --add group        Add a single group"
+            echo "  --update user      Update user attributes"
             echo "  --batch-add user   Add multiple users from file"
             echo "  --batch-add group  Add multiple groups from file"
             echo ""
             echo "Examples:"
             echo "  $0 --add user --name alice --comment \"Alice:Eng\""
             echo "  $0 --add group --name developers"
+            echo "  $0 --update user --name alice --shell /bin/zsh"
+            echo "  $0 --update user --name alice --sudo allow --expire 90"
             echo "  $0 --batch-add user --file users.txt"
             echo "  $0 --batch-add group --file groups.json"
             echo ""

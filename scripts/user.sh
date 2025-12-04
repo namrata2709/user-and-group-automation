@@ -76,7 +76,9 @@ parse_arguments() {
     account_expiry=""
     batch_file=""
     lock_reason=""
-    
+    groups_action=""
+    password_min_days=""
+
     GLOBAL_SHELL=""
     GLOBAL_SUDO=""
     GLOBAL_PGROUP=""
@@ -164,6 +166,12 @@ parse_arguments() {
                 lock_reason="$2"
                 shift
                 ;;
+            --add-to-groups)
+                groups_action="add"
+                ;;
+            --remove-from-groups)
+                groups_action="remove"
+                ;;
             --name)
                 if [[ -z "$2" ]]; then
                     echo "Error: --name requires an argument" >&2
@@ -237,6 +245,14 @@ parse_arguments() {
                     exit 1
                 fi
                 password_warning="$2"
+                shift
+                ;;
+            --pmin|--password-min)
+                if [[ -z "$2" ]]; then
+                    echo "Error: --pmin requires number of days" >&2
+                    exit 1
+                fi
+                password_min_days="$2"
                 shift
                 ;;
             --expire|--account-expiry)
@@ -374,12 +390,22 @@ handle_update_command() {
         return 1
     fi
     
-    if [ -z "$shell_value" ] && [ -z "$sudo_access" ] && [ -z "$account_expiry" ] && [ -z "$comment" ]; then
+    if [ -z "$shell_value" ] && [ -z "$sudo_access" ] && [ -z "$account_expiry" ] && \
+       [ -z "$comment" ] && [ "$use_random" = "no" ] && \
+       [ -z "$secondary_groups" ] && [ -z "$primary_group" ] && \
+       [ -z "$password_expiry" ] && [ -z "$password_min_days" ] && [ -z "$password_warning" ]; then
         echo "ERROR: At least one update parameter required:"
-        echo "  --shell <path|role>"
-        echo "  --sudo <allow|deny>"
-        echo "  --expire <date|days|0|role>"
-        echo "  --comment <firstname lastname:department>"
+        echo "  --shell <path|role>                Change shell"
+        echo "  --sudo <allow|deny>                Change sudo access"
+        echo "  --expire <date|days|0|role>        Change account expiry"
+        echo "  --comment <text>                   Change comment"
+        echo "  --random                           Reset password (generates random)"
+        echo "  --add-to-groups --sgroups <g1,g2>  Add to groups"
+        echo "  --remove-from-groups --sgroups <g1,g2>  Remove from groups"
+        echo "  --pgroup <group>                   Change primary group"
+        echo "  --pexpiry <days>                   Password expiry days"
+        echo "  --pmin <days>                      Password min days"
+        echo "  --pwarn <days>                     Password warning days"
         return 1
     fi
     
@@ -411,6 +437,41 @@ handle_update_command() {
     
     if [ -n "$comment" ]; then
         if ! update_user_comment "$username" "$comment"; then
+            has_error=1
+        fi
+        echo ""
+    fi
+    
+    if [ "$use_random" = "yes" ]; then
+        if ! update_user_password "$username" "yes" ""; then
+            has_error=1
+        fi
+        echo ""
+    fi
+    
+    if [ "$groups_action" = "add" ] && [ -n "$secondary_groups" ]; then
+        if ! update_user_add_groups "$username" "$secondary_groups"; then
+            has_error=1
+        fi
+        echo ""
+    fi
+    
+    if [ "$groups_action" = "remove" ] && [ -n "$secondary_groups" ]; then
+        if ! update_user_remove_groups "$username" "$secondary_groups"; then
+            has_error=1
+        fi
+        echo ""
+    fi
+    
+    if [ -n "$primary_group" ]; then
+        if ! update_user_primary_group "$username" "$primary_group"; then
+            has_error=1
+        fi
+        echo ""
+    fi
+    
+    if [ -n "$password_expiry" ] || [ -n "$password_min_days" ] || [ -n "$password_warning" ]; then
+        if ! update_user_password_policy "$username" "$password_expiry" "$password_min_days" "$password_warning"; then
             has_error=1
         fi
         echo ""

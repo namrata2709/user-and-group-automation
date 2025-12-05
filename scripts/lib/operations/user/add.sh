@@ -3,13 +3,14 @@ add_user() {
     local comment="$2"
     local use_random="$3"
     local shell_value="$4"
-    local sudo_input="$5"
-    local primary_group="$6"
-    local secondary_groups="$7"
-    local password_expiry="$8"
-    local password_min="${9}"
-    local password_warning="${10}"
-    local account_expiry="${11}"
+    local role_value="$5"
+    local sudo_input="$6"
+    local primary_group="$7"
+    local secondary_groups="$8"
+    local password_expiry="$9"
+    local password_min="${10}"
+    local password_warning="${11}"
+    local account_expiry="${12}"
     
     if [ -z "$trusted" ]; then
         trusted="no"
@@ -86,23 +87,38 @@ add_user() {
         echo "INFO: Adding user to secondary groups: $secondary_groups"
     fi
 
+    if [ -n "$role_value" ]; then
+        if is_valid_role "$role_value"; then
+            apply_role_defaults "$role_value"
+            echo "INFO: Applied role defaults for: $role_value"
+        else
+            echo "ERROR: Invalid role: $role_value"
+            echo "Valid roles: admin, developer, support, intern, manager, contractor"
+            return 1
+        fi
+    fi
     if [ -n "$shell_value" ]; then
         if validate_shell_path "$shell_value"; then
             user_shell="$shell_value"
-            echo "INFO: Using shell path: $user_shell"
-            
-            if [ -z "$sudo_access" ]; then
-                sudo_access="$DEFAULT_SUDO"
-            fi
-        elif is_valid_role "$shell_value"; then
-            apply_role_defaults "$shell_value"
+            echo "INFO: Using custom shell: $user_shell"
+        else
+            echo "ERROR: Invalid shell path: $shell_value"
+            return 1
         fi
-    else
+    fi
+    if [ -z "$user_shell" ]; then
         user_shell="$DEFAULT_SHELL"
-        if [ -z "$sudo_access" ]; then
-            sudo_access="$DEFAULT_SUDO"
-        fi
         echo "INFO: Using default shell: $user_shell"
+    fi
+    
+    # Step 4: Override sudo if explicitly provided
+    if [ -n "$sudo_input" ]; then
+        sudo_access="$sudo_input"
+        echo "INFO: Sudo access set by user: $sudo_access"
+    elif [ -z "$sudo_access" ]; then
+        # No role and no explicit input
+        sudo_access="$DEFAULT_SUDO"
+        echo "INFO: Using default sudo: $sudo_access"
     fi
 
     if [ -z "$password_expiry" ]; then

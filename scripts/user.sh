@@ -67,6 +67,7 @@ parse_arguments() {
     username=""
     comment=""
     use_random="no"
+    role_value="" 
     shell_value=""
     sudo_access=""
     primary_group=""
@@ -193,10 +194,19 @@ parse_arguments() {
                 ;;
             --shell)
                 if [[ -z "$2" ]]; then
-                    echo "Error: --shell requires a path or role name" >&2
+                    echo "Error: --shell requires a path argument" >&2
                     exit 1
                 fi
                 shell_value="$2"
+                shift
+                ;;
+            
+            --role)
+                if [[ -z "$2" ]]; then
+                    echo "Error: --role requires a role name" >&2
+                    exit 1
+                fi
+                role_value="$2"
                 shift
                 ;;
             --sudo)

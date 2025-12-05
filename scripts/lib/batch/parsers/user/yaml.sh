@@ -54,6 +54,7 @@ parse_user_yaml_file() {
     local sgroups=""
     local pexpiry=""
     local pwarn=""
+    local pmin=""
     local aexpiry=""
     local random=""
     local user_count=0
@@ -95,7 +96,7 @@ parse_user_yaml_file() {
                 fi
                 
                 # Add to batch array
-                BATCH_USERS+=("$username|$comment|$shell|$sudo|$pgroup|$sgroups|$pexpiry|$pwarn|$aexpiry|$random")
+                BATCH_USERS+=("$username|$comment|$shell|$sudo|$pgroup|$sgroups|$pexpiry|$pmin|$pwarn|$aexpiry|$random")
                 
                 # Reset variables
                 username=""
@@ -106,6 +107,7 @@ parse_user_yaml_file() {
                 sgroups=""
                 pexpiry=""
                 pwarn=""
+                pmin=""
                 aexpiry=""
                 random=""
             fi
@@ -120,7 +122,7 @@ parse_user_yaml_file() {
         # If in user block, parse key-value pairs
         if [ $in_user_block -eq 1 ]; then
             # Extract key and value
-            if [[ "$line" =~ ^[[:space:]]+(username|comment|shell|sudo|primary_group|secondary_groups|password_expiry|password_warning|account_expiry|random):[[:space:]]*(.*)$ ]]; then
+            if [[ "$line" =~ ^[[:space:]]+(username|comment|shell|sudo|primary_group|secondary_groups|password_expiry|password_min|password_warning|account_expiry|random):[[:space:]]*(.*)$ ]]; then
                 local key="${BASH_REMATCH[1]}"
                 local value="${BASH_REMATCH[2]}"
                 
@@ -152,6 +154,9 @@ parse_user_yaml_file() {
                     password_expiry)
                         pexpiry="$value"
                         ;;
+                    password_min)
+                        pmin="$value"
+                        ;;
                     password_warning)
                         pwarn="$value"
                         ;;
@@ -181,7 +186,7 @@ parse_user_yaml_file() {
             fi
             
             # Add to batch array
-            BATCH_USERS+=("$username|$comment|$shell|$sudo|$pgroup|$sgroups|$pexpiry|$pwarn|$aexpiry|$random")
+            BATCH_USERS+=("$username|$comment|$shell|$sudo|$pgroup|$sgroups|$pexpiry|$pmin|$pwarn|$aexpiry|$random")
         fi
     fi
     

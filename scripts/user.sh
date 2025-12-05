@@ -239,7 +239,7 @@ parse_arguments() {
                 password_expiry="$2"
                 shift
                 ;;
-            --password-warning|--pwarn)
+            --password-warning|--password-warn|--pwarn)
                 if [[ -z "$2" ]]; then
                     echo "Error: --password-warning requires number of days" >&2
                     exit 1
@@ -247,7 +247,7 @@ parse_arguments() {
                 password_warning="$2"
                 shift
                 ;;
-            --pmin|--password-min)
+            --password-minimum|--password-min|--pmin)
                 if [[ -z "$2" ]]; then
                     echo "Error: --pmin requires number of days" >&2
                     exit 1
@@ -255,7 +255,7 @@ parse_arguments() {
                 password_min_days="$2"
                 shift
                 ;;
-            --expire|--account-expiry)
+            --account-expiry|--account-expire|--expire)
                 if [[ -z "$2" ]]; then
                     echo "Error: --expire requires days/role/date" >&2
                     exit 1
@@ -332,7 +332,7 @@ parse_arguments() {
                 GLOBAL_SGROUPS="$2"
                 shift
                 ;;
-            --global-pexpiry)
+            --global-password-expiry|--global-pexpiry)
                 if [[ -z "$2" ]]; then
                     echo "Error: --global-pexpiry requires number of days" >&2
                     exit 1
@@ -340,7 +340,7 @@ parse_arguments() {
                 GLOBAL_PEXPIRY="$2"
                 shift
                 ;;
-            --global-pwarn)
+            --global-password-warning|--global-password-warn|--global-pwarn)
                 if [[ -z "$2" ]]; then
                     echo "Error: --global-pwarn requires number of days" >&2
                     exit 1
@@ -348,7 +348,15 @@ parse_arguments() {
                 GLOBAL_PWARN="$2"
                 shift
                 ;;
-            --global-expire)
+            --global-password-minimum|--global-password-min|--global-pmin)
+                if [[ -z "$2" ]]; then
+                    echo "Error: --global-pmin requires number of days" >&2
+                    exit 1
+                fi
+                GLOBAL_PMIN="$2"
+                shift
+                ;;
+            --global-account-expiry|--global-account-expire|--global-expire)
                 if [[ -z "$2" ]]; then
                     echo "Error: --global-expire requires days/role/date" >&2
                     exit 1

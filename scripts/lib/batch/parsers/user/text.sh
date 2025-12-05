@@ -20,7 +20,7 @@ parse_user_text_file() {
         line=$(echo "$line" | xargs)
         
         if [[ "$line" =~ , ]]; then
-            IFS=',' read -r username comment shell sudo pgroup sgroups pexpiry pwarn aexpiry random <<< "$line"
+            IFS=',' read -r username comment shell sudo pgroup sgroups pexpiry pmin pwarn aexpiry random <<< "$line"
             
             username=$(echo "$username" | xargs)
             comment=$(echo "$comment" | xargs)
@@ -53,7 +53,7 @@ parse_user_text_file() {
             continue
         fi
         
-        BATCH_USERS+=("$username|$comment|$shell|$sudo|$pgroup|$sgroups|$pexpiry|$pwarn|$aexpiry|$random")
+        BATCH_USERS+=("$username|$comment|$shell|$sudo|$pgroup|$sgroups|$pexpiry|$pmin|$pwarn|$aexpiry|$random")
         
     done < "$file_path"
     

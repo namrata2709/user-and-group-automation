@@ -21,8 +21,8 @@ process_batch_users() {
     echo ""
     
     if [ -n "$GLOBAL_SHELL" ] || [ -n "$GLOBAL_SUDO" ] || [ -n "$GLOBAL_PGROUP" ] || \
-       [ -n "$GLOBAL_SGROUPS" ] || [ -n "$GLOBAL_PEXPIRY" ] || [ -n "$GLOBAL_PWARN" ] || \
-       [ -n "$GLOBAL_EXPIRE" ] || [ -n "$GLOBAL_RANDOM" ]; then
+       [ -n "$GLOBAL_SGROUPS" ] || [ -n "$GLOBAL_PEXPIRY" ] || [ -n "$GLOBAL_PMIN" ] || \
+       [ -n "$GLOBAL_PWARN" ] || [ -n "$GLOBAL_EXPIRE" ] || [ -n "$GLOBAL_RANDOM" ]; then
         echo "Global Parameters Applied:"
         [ -n "$GLOBAL_SHELL" ] && echo "  Shell:            $GLOBAL_SHELL"
         [ -n "$GLOBAL_SUDO" ] && echo "  Sudo Access:      $GLOBAL_SUDO"
@@ -30,6 +30,7 @@ process_batch_users() {
         [ -n "$GLOBAL_SGROUPS" ] && echo "  Secondary Groups: $GLOBAL_SGROUPS"
         [ -n "$GLOBAL_PEXPIRY" ] && echo "  Password Expiry:  $GLOBAL_PEXPIRY days"
         [ -n "$GLOBAL_PWARN" ] && echo "  Password Warning: $GLOBAL_PWARN days"
+        [ -n "$GLOBAL_PMIN" ] && echo "  Password Min Days: $GLOBAL_PMIN days"
         [ -n "$GLOBAL_EXPIRE" ] && echo "  Account Expiry:   $GLOBAL_EXPIRE"
         [ -n "$GLOBAL_RANDOM" ] && echo "  Random Password:  yes"
         echo ""
@@ -40,7 +41,7 @@ process_batch_users() {
     for user_index in "${!BATCH_USERS[@]}"; do
         ((total++))
         
-        IFS='|' read -r username comment shell sudo pgroup sgroups pexpiry pwarn aexpiry random <<< "${BATCH_USERS[$user_index]}"
+        IFS='|' read -r username comment shell sudo pgroup sgroups pexpiry pmin pwarn aexpiry random <<< "${BATCH_USERS[$user_index]}"
         
         if [ -z "$shell" ]; then
             if [ -n "$GLOBAL_SHELL" ]; then
@@ -78,6 +79,12 @@ process_batch_users() {
             fi
         fi
         
+        if [ -z "$pmin" ]; then
+            if [ -n "$GLOBAL_PMIN" ]; then
+                pmin="$GLOBAL_PMIN"
+            fi
+        fi
+
         if [ -z "$aexpiry" ]; then
             if [ -n "$GLOBAL_EXPIRE" ]; then
                 aexpiry="$GLOBAL_EXPIRE"
@@ -141,7 +148,7 @@ process_batch_users() {
             done
         fi
         
-        if add_user "$username" "$comment" "$random" "$shell" "$sudo" "$pgroup" "$sgroups" "$pexpiry" "$pwarn" "$aexpiry" "yes" >/dev/null 2>&1; then
+        if add_user "$username" "$comment" "$random" "$shell" "$sudo" "$pgroup" "$sgroups" "$pexpiry" "$pmin" "$pwarn" "$aexpiry" "yes" >/dev/null 2>&1; then
             echo "  └─ SUCCESS: User created"
             ((created++))
             success_users+=("$username")

@@ -45,6 +45,7 @@ parse_user_json_file() {
         local sgroups=$(echo "$user_json" | jq -r '.secondary_groups // empty')
         local pexpiry=$(echo "$user_json" | jq -r '.password_expiry // empty')
         local pwarn=$(echo "$user_json" | jq -r '.password_warning // empty')
+        local pmin=$(echo "$user_json" | jq -r '.password_min // empty')
         local aexpiry=$(echo "$user_json" | jq -r '.account_expiry // empty')
         local random=$(echo "$user_json" | jq -r '.random // empty')
         
@@ -60,7 +61,7 @@ parse_user_json_file() {
         
         [ -z "$random" ] && random="no"
         
-        BATCH_USERS+=("$username|$comment|$shell|$sudo|$pgroup|$sgroups|$pexpiry|$pwarn|$aexpiry|$random")
+        BATCH_USERS+=("$username|$comment|$shell|$sudo|$pgroup|$sgroups|$pexpiry|$pmin|$pwarn|$aexpiry|$random")
         
     done <<< "$users_json"
     

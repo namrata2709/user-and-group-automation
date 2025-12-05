@@ -7,9 +7,9 @@ add_user() {
     local primary_group="$6"
     local secondary_groups="$7"
     local password_expiry="$8"
-    local password_warning="$9"
-    local account_expiry="${10}"
-    local trusted="${11}"
+    local password_min="${9}"
+    local password_warning="${10}"
+    local account_expiry="${11}"
     
     if [ -z "$trusted" ]; then
         trusted="no"
@@ -112,7 +112,9 @@ add_user() {
     if [ -z "$password_warning" ]; then
         password_warning="$PASSWORD_WARN_DAYS"
     fi
-
+    if [ -z "$password_min" ]; then
+        password_min="$PASSWORD_MIN_DAYS"
+    fi
     if [ -n "$account_expiry" ]; then
         if [[ "$account_expiry" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
             expiry_date="$account_expiry"
@@ -167,7 +169,7 @@ add_user() {
             
             if [ "$user_shell" != "/usr/sbin/nologin" ] && [ "$user_shell" != "/sbin/nologin" ]; then
                 chage -d 0 "$username"
-                chage -M "$password_expiry" -W "$password_warning" "$username"
+                chage -M "$password_expiry" -m "$PASSWORD_MIN_DAYS" -W "$password_warning" "$username"
                 echo "INFO: Password must be changed on first login"
                 echo "INFO: Password expires every $password_expiry days"
             else
